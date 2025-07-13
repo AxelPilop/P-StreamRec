@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en" class="is-secondary">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.css" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.js"></script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+        <link rel="manifest" href="/static/site.webmanifest">
+        <title>P-StreamRec - Videos</title>
+        <style>
+            .video-player {
+                width: 100%;
+                max-width: 800px;
+                margin: 0 auto;
+            }
+            .video-item {
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+            .video-item:hover {
+                background-color: rgba(0, 0, 0, 0.05);
+            }
+            .file-size {
+                color: #666;
+                font-size: 0.9em;
+            }
+        </style>
+    </head>
+
+    <body>
+        <!-- Main Section -->
+        <div class="ts-container has-vertically-padded-big" style="--width: 1200px">
+            <!-- Header -->
+            <div class="ts-grid is-bottom-aligned">
+                <div class="column is-fluid">
+                    <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">P-StreamRec - Videos</div>
+                    <div class="ts-meta">
+                        <div class="item">
+                            <span class="ts-text is-description is-bold">{{ len .Videos }} video(s) found</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="column">
+                    <a href="/" class="ts-button is-start-icon is-outlined">
+                        <span class="ts-icon is-arrow-left-icon"></span>
+                        Back to Main
+                    </a>
+                </div>
+            </div>
+            <!-- / Header -->
+
+            {{ if not .Videos }}
+            <!-- No Videos -->
+            <div class="ts-divider has-vertically-spaced-large"></div>
+            <div class="ts-blankslate">
+                <span class="ts-icon is-film-icon"></span>
+                <div class="header">No videos found</div>
+                <div class="description">Start recording some channels to see videos here.</div>
+                <div class="action">
+                    <a href="/" class="ts-button is-start-icon">
+                        <span class="ts-icon is-arrow-left-icon"></span>
+                        Go to Main Page
+                    </a>
+                </div>
+            </div>
+            <!-- / No Videos -->
+            {{ else }}
+
+            <!-- Video Player -->
+            <div class="ts-divider has-vertically-spaced-large"></div>
+            <div class="ts-box" id="video-player-container" style="display: none;">
+                <div class="ts-content is-padded">
+                    <div class="ts-header is-large" id="video-title">Select a video to play</div>
+                    <div class="video-player">
+                        <video id="video-player" controls width="100%" style="margin-top: 1rem;">
+                            <source id="video-source" src="" type="video/mp2t">
+                            Your browser does not support the video tag.
+                        </video>
+                    </div>
+                </div>
+            </div>
+            <!-- / Video Player -->
+
+            <!-- Video List -->
+            <div class="ts-divider has-vertically-spaced-large"></div>
+            <div class="ts-box">
+                <div class="ts-content is-padded">
+                    <div class="ts-header is-large">Available Videos</div>
+                    <div class="ts-table is-celled" style="margin-top: 1rem;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Video</th>
+                                    <th>Username</th>
+                                    <th>Size</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{ range .Videos }}
+                                <tr class="video-item" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
+                                    <td>
+                                        <div class="ts-text is-bold">{{ .Name }}</div>
+                                    </td>
+                                    <td>
+                                        <span class="ts-badge is-small">{{ .Username }}</span>
+                                    </td>
+                                    <td class="file-size">
+                                        {{ if gt .Size 1073741824 }}
+                                            {{ printf "%.2f GB" (div (float64 .Size) 1073741824) }}
+                                        {{ else if gt .Size 1048576 }}
+                                            {{ printf "%.2f MB" (div (float64 .Size) 1048576) }}
+                                        {{ else }}
+                                            {{ printf "%.2f KB" (div (float64 .Size) 1024) }}
+                                        {{ end }}
+                                    </td>
+                                    <td>
+                                        {{ .ModTime.Format "2006-01-02 15:04:05" }}
+                                    </td>
+                                    <td>
+                                        <button class="ts-button is-small is-start-icon play-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
+                                            <span class="ts-icon is-play-icon"></span>
+                                            Play
+                                        </button>
+                                        <a href="/videos/{{ .Path }}" class="ts-button is-small is-start-icon is-outlined" download>
+                                            <span class="ts-icon is-download-icon"></span>
+                                            Download
+                                        </a>
+                                    </td>
+                                </tr>
+                                {{ end }}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- / Video List -->
+            {{ end }}
+        </div>
+        <!-- / Main Section -->
+
+        <script>
+            // Function to play video
+            function playVideo(videoPath, videoName) {
+                const playerContainer = document.getElementById('video-player-container');
+                const videoPlayer = document.getElementById('video-player');
+                const videoSource = document.getElementById('video-source');
+                const videoTitle = document.getElementById('video-title');
+                
+                // Set video source
+                videoSource.src = '/videos/' + videoPath;
+                videoTitle.textContent = videoName;
+                
+                // Show player container
+                playerContainer.style.display = 'block';
+                
+                // Load new video
+                videoPlayer.load();
+                
+                // Scroll to player
+                playerContainer.scrollIntoView({ behavior: 'smooth' });
+            }
+
+            // Add event listeners to play buttons
+            document.querySelectorAll('.play-btn').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const videoPath = this.getAttribute('data-video-path');
+                    const videoName = this.getAttribute('data-video-name');
+                    playVideo(videoPath, videoName);
+                });
+            });
+
+            // Add event listeners to table rows
+            document.querySelectorAll('.video-item').forEach(row => {
+                row.addEventListener('click', function(e) {
+                    // Don't trigger if clicking on buttons
+                    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) {
+                        return;
+                    }
+                    
+                    const videoPath = this.getAttribute('data-video-path');
+                    const videoName = this.getAttribute('data-video-name');
+                    playVideo(videoPath, videoName);
+                });
+            });
+        </script>
+    </body>
+</html>

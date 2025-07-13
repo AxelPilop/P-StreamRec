@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -101,4 +103,95 @@ func UpdateConfig(c *gin.Context) {
 	server.Config.Cookies = req.Cookies
 	server.Config.UserAgent = req.UserAgent
 	c.Redirect(http.StatusFound, "/")
+}
+
+// VideoInfo represents information about a video file.
+type VideoInfo struct {
+	Name     string
+	Path     string
+	Size     int64
+	ModTime  time.Time
+	Username string
+}
+
+// VideoList renders a page with available videos.
+func VideoList(c *gin.Context) {
+	videos, err := getVideoFiles()
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to list videos: %w", err))
+		return
+	}
+
+	c.HTML(200, "videos.html", gin.H{
+		"Videos": videos,
+		"Config": server.Config,
+	})
+}
+
+// ServeVideo serves video files for streaming.
+func ServeVideo(c *gin.Context) {
+	videoPath := c.Param("filepath")
+	if videoPath == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// Remove leading slash
+	if videoPath[0] == '/' {
+		videoPath = videoPath[1:]
+	}
+
+	// Construct full path
+	fullPath := filepath.Join("videos", videoPath)
+	
+	// Check if file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	// Set appropriate headers for video streaming
+	c.Header("Content-Type", "video/mp2t")
+	c.Header("Accept-Ranges", "bytes")
+	c.File(fullPath)
+}
+
+// getVideoFiles scans the videos directory and returns a list of video files.
+func getVideoFiles() ([]VideoInfo, error) {
+	var videos []VideoInfo
+	
+	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".ts") {
+			// Extract username from filename
+			username := extractUsernameFromPath(path)
+			
+			videos = append(videos, VideoInfo{
+				Name:     info.Name(),
+				Path:     path,
+				Size:     info.Size(),
+				ModTime:  info.ModTime(),
+				Username: username,
+			})
+		}
+		return nil
+	})
+
+	return videos, err
+}
+
+// extractUsernameFromPath extracts the username from the video file path.
+func extractUsernameFromPath(path string) string {
+	filename := filepath.Base(path)
+	// Remove extension
+	name := strings.TrimSuffix(filename, ".ts")
+	// Split by underscore and take the first part as username
+	parts := strings.Split(name, "_")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return "unknown"
 }

@@ -16,7 +16,7 @@ func SetupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.Default()
-	if err := LoadHTMLFromEmbedFS(r, view.FS, "templates/index.html", "templates/channel_info.html"); err != nil {
+	if err := LoadHTMLFromEmbedFS(r, view.FS, "templates/index.html", "templates/channel_info.html", "templates/videos.html"); err != nil {
 		log.Fatalf("failed to load HTML templates: %v", err)
 	}
 
@@ -58,6 +58,8 @@ func SetupViews(r *gin.Engine) {
 	r.POST("/stop_channel/:username", StopChannel)
 	r.POST("/pause_channel/:username", PauseChannel)
 	r.POST("/resume_channel/:username", ResumeChannel)
+	r.GET("/videos", VideoList)
+	r.GET("/videos/*filepath", ServeVideo)
 
 }
 
