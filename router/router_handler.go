@@ -184,10 +184,13 @@ func ServeVideo(c *gin.Context) {
 		return
 	}
 
-	// Set appropriate headers for video streaming
+	// Set appropriate headers for video streaming with mpegts.js
 	c.Header("Content-Type", "video/mp2t")
 	c.Header("Accept-Ranges", "bytes")
 	c.Header("Cache-Control", "no-cache")
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Range, Content-Type")
 	c.File(fullPath)
 }
 
@@ -222,45 +225,6 @@ func ServeVideoCompatible(c *gin.Context) {
 	c.Header("Access-Control-Allow-Headers", "Range")
 	
 	c.File(fullPath)
-}
-
-// ServeHLSManifest generates a temporary M3U8 manifest for a single .ts file
-func ServeHLSManifest(c *gin.Context) {
-	videoPath := c.Param("filepath")
-	if videoPath == "" {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	// Remove leading slash
-	if videoPath[0] == '/' {
-		videoPath = videoPath[1:]
-	}
-
-	// Construct full path
-	fullPath := filepath.Join("videos", videoPath)
-	
-	// Check if file exists
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
-	}
-
-	// Generate a simple M3U8 manifest for the single .ts file
-	manifest := fmt.Sprintf(`#EXTM3U
-#EXT-X-VERSION:3
-#EXT-X-TARGETDURATION:3600
-#EXT-X-MEDIA-SEQUENCE:0
-#EXT-X-PLAYLIST-TYPE:VOD
-#EXTINF:3600.0,
-/videos/%s
-#EXT-X-ENDLIST
-`, videoPath)
-
-	c.Header("Content-Type", "application/vnd.apple.mpegurl")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.String(200, manifest)
 }
 
 // getVideoFiles scans the videos directory and returns a list of video files.

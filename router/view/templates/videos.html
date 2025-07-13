@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.css" />
         <script src="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -229,24 +229,24 @@
         <script>
             let currentVideoPath = null;
             let progressInterval = null;
-            let hls = null;
+            let mpegtsPlayer = null;
             let videoPlayer = null;
 
             // Initialize when DOM is ready
             document.addEventListener('DOMContentLoaded', function() {
                 videoPlayer = document.getElementById('video-player');
                 
-                // Check if HLS.js is supported
-                if (Hls.isSupported()) {
-                    console.log('HLS.js is supported - will use for .ts files');
+                // Check if mpegts.js is supported
+                if (mpegts.getFeatureList().mseLivePlayback) {
+                    console.log('mpegts.js is supported - will use for .ts files');
                 } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
                     console.log('Native HLS support detected');
                 } else {
-                    console.log('HLS not supported - fallback to direct video serving');
+                    console.log('mpegts.js not supported - fallback to direct video serving');
                 }
             });
 
-            // Function to play video using HLS.js
+            // Function to play video using mpegts.js
             function playVideo(videoPath, videoName) {
                 currentVideoPath = videoPath;
                 const playerContainer = document.getElementById('video-player-container');
@@ -259,62 +259,61 @@
                 // Show player container
                 playerContainer.style.display = 'block';
                 
-                // Clean up previous HLS instance
-                if (hls) {
-                    hls.destroy();
+                // Clean up previous mpegts instance
+                if (mpegtsPlayer) {
+                    mpegtsPlayer.destroy();
+                    mpegtsPlayer = null;
                 }
                 
                 const videoUrl = '/videos/' + videoPath;
-                const hlsUrl = '/hls/' + videoPath;
                 
-                // Try HLS.js first for .ts files
-                if (Hls.isSupported()) {
-                    hls = new Hls({
-                        debug: false,
-                        enableWorker: true,
-                        lowLatencyMode: false,
-                        backBufferLength: 90
-                    });
-                    
-                    // Load the HLS manifest first
-                    hls.loadSource(hlsUrl);
-                    hls.attachMedia(videoPlayer);
-                    
-                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                        console.log('HLS manifest parsed, ready to play');
-                        videoInfo.textContent = 'Ready to play';
+                // Try mpegts.js first for .ts files
+                if (mpegts.getFeatureList().mseLivePlayback) {
+                    try {
+                        mpegtsPlayer = mpegts.createPlayer({
+                            type: 'mpegts',
+                            isLive: false,
+                            url: videoUrl
+                        }, {
+                            enableStashBuffer: true,
+                            stashInitialSize: 384 * 1024,
+                            accurateSeek: true
+                        });
                         
-                        // Load existing progress
-                        loadVideoProgress(videoPath);
+                        mpegtsPlayer.attachMediaElement(videoPlayer);
                         
-                        // Set up progress tracking
-                        setupProgressTracking(videoPlayer, videoPath);
-                    });
-                    
-                    hls.on(Hls.Events.ERROR, function(event, data) {
-                        console.error('HLS error:', data);
+                        mpegtsPlayer.on(mpegts.Events.ERROR, function(type, info) {
+                            console.error('mpegts.js error:', type, info);
+                            videoInfo.textContent = 'Error loading video - trying fallback';
+                            tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                        });
                         
-                        if (data.fatal) {
-                            switch (data.type) {
-                                case Hls.ErrorTypes.NETWORK_ERROR:
-                                    console.log('Network error - trying fallback');
-                                    tryFallbackPlayback(videoUrl, videoPath, videoInfo);
-                                    break;
-                                case Hls.ErrorTypes.MEDIA_ERROR:
-                                    console.log('Media error - trying to recover');
-                                    hls.recoverMediaError();
-                                    break;
-                                default:
-                                    console.log('Fatal error - trying fallback');
-                                    tryFallbackPlayback(videoUrl, videoPath, videoInfo);
-                                    break;
-                            }
-                        }
-                    });
+                        mpegtsPlayer.on(mpegts.Events.METADATA_ARRIVED, function() {
+                            console.log('mpegts.js metadata arrived');
+                            videoInfo.textContent = 'Ready to play';
+                            
+                            // Load existing progress
+                            loadVideoProgress(videoPath);
+                            
+                            // Set up progress tracking
+                            setupProgressTracking(videoPlayer, videoPath);
+                        });
+                        
+                        mpegtsPlayer.on(mpegts.Events.LOADING_COMPLETE, function() {
+                            console.log('mpegts.js loading complete');
+                            videoInfo.textContent = 'Video loaded successfully';
+                        });
+                        
+                        mpegtsPlayer.load();
+                        
+                    } catch (error) {
+                        console.error('Error creating mpegts player:', error);
+                        tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                    }
                     
                 } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
                     // Native HLS support (Safari)
-                    videoPlayer.src = hlsUrl;
+                    videoPlayer.src = videoUrl;
                     loadVideoProgress(videoPath);
                     setupProgressTracking(videoPlayer, videoPath);
                     
@@ -327,7 +326,7 @@
                 playerContainer.scrollIntoView({ behavior: 'smooth' });
             }
             
-            // Fallback function for browsers without HLS support
+            // Fallback function for browsers without mpegts.js support
             function tryFallbackPlayback(videoUrl, videoPath, videoInfo) {
                 console.log('Trying fallback playback methods');
                 
@@ -379,9 +378,9 @@
                     videoPlayer.currentTime = 0;
                 }
                 
-                if (hls) {
-                    hls.destroy();
-                    hls = null;
+                if (mpegtsPlayer) {
+                    mpegtsPlayer.destroy();
+                    mpegtsPlayer = null;
                 }
                 
                 playerContainer.style.display = 'none';
