@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.css" />
         <script src="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -79,25 +79,12 @@
             <!-- Header -->
             <div class="ts-grid is-bottom-aligned">
                 <div class="column is-fluid">
-                    <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">P-StreamRec - {{ if .ShowTS }}TS Files{{ else }}Videos{{ end }}</div>
+                    <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">P-StreamRec - Videos</div>
                     <div class="ts-meta">
                         <div class="item">
                             <span class="ts-text is-description is-bold">{{ len .Videos }} video(s) found</span>
                         </div>
                     </div>
-                </div>
-                <div class="column">
-                    {{ if .ShowTS }}
-                    <a href="/videos" class="ts-button is-start-icon is-outlined">
-                        <span class="ts-icon is-film-icon"></span>
-                        View MP4 Files
-                    </a>
-                    {{ else }}
-                    <a href="/ts-files" class="ts-button is-start-icon is-outlined">
-                        <span class="ts-icon is-file-icon"></span>
-                        View TS Files
-                    </a>
-                    {{ end }}
                 </div>
                 <div class="column">
                     <a href="/" class="ts-button is-start-icon is-outlined">
@@ -214,17 +201,10 @@
                                         {{ end }}
                                     </td>
                                     <td>
-                                        {{ if $.ShowTS }}
-                                        <button class="ts-button is-small is-start-icon is-positive convert-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
-                                            <span class="ts-icon is-refresh-icon"></span>
-                                            Convert
-                                        </button>
-                                        {{ else }}
                                         <button class="ts-button is-small is-start-icon play-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
                                             <span class="ts-icon is-play-icon"></span>
                                             Play
                                         </button>
-                                        {{ end }}
                                         <a href="/videos/{{ .Path }}" class="ts-button is-small is-start-icon is-outlined" download>
                                             <span class="ts-icon is-download-icon"></span>
                                             Download
@@ -249,24 +229,24 @@
         <script>
             let currentVideoPath = null;
             let progressInterval = null;
-            let mpegtsPlayer = null;
+            let hls = null;
             let videoPlayer = null;
 
             // Initialize when DOM is ready
             document.addEventListener('DOMContentLoaded', function() {
                 videoPlayer = document.getElementById('video-player');
                 
-                // Check if mpegts.js is supported
-                if (mpegts.getFeatureList().mseLivePlayback) {
-                    console.log('mpegts.js is supported - will use for .ts files');
+                // Check HLS support
+                if (Hls.isSupported()) {
+                    console.log('HLS.js is supported - will use for .ts files');
                 } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
                     console.log('Native HLS support detected');
                 } else {
-                    console.log('mpegts.js not supported - fallback to direct video serving');
+                    console.log('HLS not supported - fallback to direct video serving');
                 }
             });
 
-            // Function to play video using mpegts.js
+            // Function to play video using HLS.js or native playback
             function playVideo(videoPath, videoName) {
                 currentVideoPath = videoPath;
                 const playerContainer = document.getElementById('video-player-container');
@@ -279,56 +259,38 @@
                 // Show player container
                 playerContainer.style.display = 'block';
                 
-                // Clean up previous mpegts instance
-                if (mpegtsPlayer) {
-                    mpegtsPlayer.destroy();
-                    mpegtsPlayer = null;
+                // Clean up previous HLS instance
+                if (hls) {
+                    hls.destroy();
+                    hls = null;
                 }
                 
                 const videoUrl = '/videos/' + videoPath;
                 
-                // Try mpegts.js first for .ts files
-                if (mpegts.getFeatureList().mseLivePlayback) {
+                // For .ts files, try direct playback first
+                if (Hls.isSupported()) {
+                    // Try direct .ts file playback with HLS.js
                     try {
-                        mpegtsPlayer = mpegts.createPlayer({
-                            type: 'mpegts',
-                            isLive: false,
-                            url: videoUrl
-                        }, {
-                            enableStashBuffer: true,
-                            stashInitialSize: 384 * 1024,
-                            accurateSeek: true
-                        });
+                        // First, try direct .ts file playback
+                        videoPlayer.src = videoUrl;
                         
-                        mpegtsPlayer.attachMediaElement(videoPlayer);
-                        
-                        mpegtsPlayer.on(mpegts.Events.ERROR, function(type, info) {
-                            console.error('mpegts.js error:', type, info);
-                            videoInfo.textContent = 'Error loading video - trying fallback';
-                            tryFallbackPlayback(videoUrl, videoPath, videoInfo);
-                        });
-                        
-                        mpegtsPlayer.on(mpegts.Events.METADATA_ARRIVED, function() {
-                            console.log('mpegts.js metadata arrived');
-                            videoInfo.textContent = 'Ready to play';
-                            
-                            // Load existing progress
+                        videoPlayer.addEventListener('loadedmetadata', function onLoaded() {
+                            console.log('Direct .ts playback successful');
+                            videoInfo.textContent = 'Ready to play - Direct TS';
                             loadVideoProgress(videoPath);
-                            
-                            // Set up progress tracking
                             setupProgressTracking(videoPlayer, videoPath);
-                        });
+                            videoPlayer.removeEventListener('loadedmetadata', onLoaded);
+                        }, { once: true });
                         
-                        mpegtsPlayer.on(mpegts.Events.LOADING_COMPLETE, function() {
-                            console.log('mpegts.js loading complete');
-                            videoInfo.textContent = 'Video loaded successfully';
-                        });
-                        
-                        mpegtsPlayer.load();
+                        videoPlayer.addEventListener('error', function onError() {
+                            console.log('Direct .ts playback failed, trying HLS method');
+                            videoPlayer.removeEventListener('error', onError);
+                            tryHLSPlayback(videoUrl, videoPath, videoInfo);
+                        }, { once: true });
                         
                     } catch (error) {
-                        console.error('Error creating mpegts player:', error);
-                        tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                        console.error('Error with direct playback:', error);
+                        tryHLSPlayback(videoUrl, videoPath, videoInfo);
                     }
                     
                 } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
@@ -336,6 +298,7 @@
                     videoPlayer.src = videoUrl;
                     loadVideoProgress(videoPath);
                     setupProgressTracking(videoPlayer, videoPath);
+                    videoInfo.textContent = 'Playing with native HLS';
                     
                 } else {
                     // Fallback to direct video serving
@@ -346,22 +309,69 @@
                 playerContainer.scrollIntoView({ behavior: 'smooth' });
             }
             
-            // Fallback function for browsers without mpegts.js support
+            // Function to try HLS.js playback
+            function tryHLSPlayback(videoUrl, videoPath, videoInfo) {
+                console.log('Trying HLS.js playback');
+                
+                try {
+                    hls = new Hls({
+                        debug: false,
+                        enableWorker: true,
+                        lowLatencyMode: false,
+                        backBufferLength: 90
+                    });
+                    
+                    hls.loadSource(videoUrl);
+                    hls.attachMedia(videoPlayer);
+                    
+                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                        console.log('HLS manifest parsed successfully');
+                        videoInfo.textContent = 'Ready to play - HLS';
+                        loadVideoProgress(videoPath);
+                        setupProgressTracking(videoPlayer, videoPath);
+                    });
+                    
+                    hls.on(Hls.Events.ERROR, function(event, data) {
+                        console.error('HLS error:', data);
+                        if (data.fatal) {
+                            switch(data.type) {
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    console.log('Fatal network error, trying fallback');
+                                    break;
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    console.log('Fatal media error, trying fallback');
+                                    break;
+                                default:
+                                    console.log('Fatal error, trying fallback');
+                                    break;
+                            }
+                            tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                        }
+                    });
+                    
+                } catch (error) {
+                    console.error('Error creating HLS player:', error);
+                    tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                }
+            }
+            
+            // Fallback function for browsers without HLS support
             function tryFallbackPlayback(videoUrl, videoPath, videoInfo) {
                 console.log('Trying fallback playback methods');
                 
-                // Try different content types
+                // Try different content types and URLs
                 const fallbackUrls = [
-                    { url: '/videos-compat/' + videoPath, type: 'video/mp4' },
                     { url: videoUrl, type: 'video/mp2t' },
-                    { url: videoUrl, type: 'application/octet-stream' }
+                    { url: '/videos-compat/' + videoPath, type: 'video/mp4' },
+                    { url: videoUrl, type: 'application/octet-stream' },
+                    { url: videoUrl, type: 'video/ts' }
                 ];
                 
                 let currentFallback = 0;
                 
                 function tryNext() {
                     if (currentFallback >= fallbackUrls.length) {
-                        videoInfo.textContent = 'Unable to play this video format in your browser';
+                        videoInfo.textContent = 'Unable to play this video format in your browser. Try downloading the file.';
                         return;
                     }
                     
@@ -371,8 +381,8 @@
                     videoPlayer.src = fallback.url;
                     
                     videoPlayer.addEventListener('loadedmetadata', function onLoaded() {
-                        console.log('Fallback successful');
-                        videoInfo.textContent = 'Playing with fallback method';
+                        console.log('Fallback successful with:', fallback.type);
+                        videoInfo.textContent = 'Playing with fallback method (' + fallback.type + ')';
                         loadVideoProgress(videoPath);
                         setupProgressTracking(videoPlayer, videoPath);
                         videoPlayer.removeEventListener('loadedmetadata', onLoaded);
@@ -382,7 +392,7 @@
                         console.log('Fallback failed, trying next');
                         currentFallback++;
                         videoPlayer.removeEventListener('error', onError);
-                        tryNext();
+                        setTimeout(tryNext, 500); // Small delay before next attempt
                     }, { once: true });
                 }
                 
@@ -396,11 +406,12 @@
                 if (videoPlayer) {
                     videoPlayer.pause();
                     videoPlayer.currentTime = 0;
+                    videoPlayer.src = '';
                 }
                 
-                if (mpegtsPlayer) {
-                    mpegtsPlayer.destroy();
-                    mpegtsPlayer = null;
+                if (hls) {
+                    hls.destroy();
+                    hls = null;
                 }
                 
                 playerContainer.style.display = 'none';
@@ -515,70 +526,6 @@
                 }
             }
 
-            // Function to convert video
-            function convertVideo(videoPath, videoName) {
-                // Ask for confirmation with delete option
-                const deleteConfirm = confirm('Convertir "' + videoName + '" en MP4?\\n\\nSupprimer le fichier .ts après conversion?\\n\\nOK = Oui, supprimer le .ts\\nAnnuler = Non, garder le .ts');
-                
-                if (deleteConfirm !== null) {
-                    // Update button state
-                    const button = document.querySelector(`button[data-video-path="${videoPath}"].convert-btn`);
-                    if (button) {
-                        button.disabled = true;
-                        button.innerHTML = '<span class="ts-icon is-spinner-icon"></span> Converting...';
-                    }
-                    
-                    // Prepare the URL with deleteTS parameter
-                    const deleteTS = deleteConfirm ? 'true' : 'false';
-                    const url = '/api/convert/' + videoPath + '?deleteTS=' + deleteTS;
-                    
-                    fetch(url, {
-                        method: 'POST'
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            alert('Conversion terminée avec succès!\\n\\nFichier MP4 créé: ' + data.mp4_file);
-                            
-                            // If TS was deleted, remove the row
-                            if (data.deleted_ts) {
-                                const videoRow = document.querySelector(`tr[data-video-path="${videoPath}"]`);
-                                if (videoRow) {
-                                    videoRow.remove();
-                                }
-                                
-                                // Update video count
-                                const videoCount = document.querySelectorAll('.video-item').length;
-                                document.querySelector('.ts-meta .item span').textContent = videoCount + ' video(s) found';
-                            } else {
-                                // Reset button state
-                                if (button) {
-                                    button.disabled = false;
-                                    button.innerHTML = '<span class="ts-icon is-check-icon"></span> Converted';
-                                    button.classList.remove('is-positive');
-                                    button.classList.add('is-success');
-                                }
-                            }
-                        } else {
-                            alert('Erreur de conversion: ' + (data.error || 'Erreur inconnue'));
-                            // Reset button state
-                            if (button) {
-                                button.disabled = false;
-                                button.innerHTML = '<span class="ts-icon is-refresh-icon"></span> Convert';
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Erreur lors de la conversion');
-                        // Reset button state
-                        if (button) {
-                            button.disabled = false;
-                            button.innerHTML = '<span class="ts-icon is-refresh-icon"></span> Convert';
-                        }
-                    });
-                }
-            }
 
             // Function to delete video
             function deleteVideo(videoPath, videoName) {
@@ -641,17 +588,6 @@
                     });
                 });
 
-                // Add event listeners to convert buttons
-                document.querySelectorAll('.convert-btn').forEach(button => {
-                    button.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        const videoPath = this.getAttribute('data-video-path');
-                        const videoName = this.getAttribute('data-video-name');
-                        convertVideo(videoPath, videoName);
-                    });
-                });
 
                 // Add event listeners to table rows
                 document.querySelectorAll('.video-item').forEach(row => {

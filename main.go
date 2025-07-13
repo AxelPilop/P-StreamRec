@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/teacat/chaturbate-dvr/config"
-	"github.com/teacat/chaturbate-dvr/converter"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/manager"
 	"github.com/teacat/chaturbate-dvr/router"
@@ -32,7 +30,7 @@ const logo = `
 func main() {
 	app := &cli.App{
 		Name:    "chaturbate-dvr",
-		Version: "2025.28.10",
+		Version: "2025.28.11",
 		Usage:   "Record your favorite Chaturbate streams automatically. 😎🫵",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -131,9 +129,6 @@ func start(c *cli.Context) error {
 			return fmt.Errorf("load config: %w", err)
 		}
 
-		// Start background conversion service
-		go startConversionService()
-
 		return router.SetupRouter().Run(":" + c.String("port"))
 	}
 
@@ -152,27 +147,4 @@ func start(c *cli.Context) error {
 
 	// block forever
 	select {}
-}
-
-// startConversionService starts a background service that automatically converts old .ts files to .mp4
-func startConversionService() {
-	// Run conversion immediately on startup
-	fmt.Println("🔄 Starting initial video conversion check...")
-	if err := converter.ConvertOldTSFiles(); err != nil {
-		fmt.Printf("Warning: Initial conversion check failed: %v\n", err)
-	}
-
-	// Set up periodic conversion check (every 30 minutes)
-	ticker := time.NewTicker(30 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			fmt.Println("🔄 Running periodic video conversion check...")
-			if err := converter.ConvertOldTSFiles(); err != nil {
-				fmt.Printf("Warning: Periodic conversion check failed: %v\n", err)
-			}
-		}
-	}
 }

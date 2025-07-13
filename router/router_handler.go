@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/teacat/chaturbate-dvr/config"
-	"github.com/teacat/chaturbate-dvr/converter"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/server"
 )
@@ -160,22 +159,6 @@ func VideoList(c *gin.Context) {
 	c.HTML(200, "videos.html", gin.H{
 		"Videos": videos,
 		"Config": server.Config,
-		"ShowTS": false,
-	})
-}
-
-// TSFileList renders a page with available .ts files for conversion.
-func TSFileList(c *gin.Context) {
-	videos, err := getTSFiles()
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to list TS files: %w", err))
-		return
-	}
-
-	c.HTML(200, "videos.html", gin.H{
-		"Videos": videos,
-		"Config": server.Config,
-		"ShowTS": true,
 	})
 }
 
@@ -245,37 +228,8 @@ func ServeVideoCompatible(c *gin.Context) {
 }
 
 // getVideoFiles scans the videos directory and returns a list of video files.
-// Only returns .mp4 files for display in the video menu.
+// Returns .ts files for playback with HLS.js
 func getVideoFiles() ([]VideoInfo, error) {
-	var videos []VideoInfo
-	
-	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".mp4") {
-			// Extract username from filename
-			username := extractUsernameFromPath(path)
-			
-			videos = append(videos, VideoInfo{
-				Name:         info.Name(),
-				Path:         path,
-				Size:         info.Size(),
-				SizeFormatted: formatFileSize(info.Size()),
-				ModTime:      info.ModTime(),
-				Username:     username,
-				Progress:     nil, // Will be loaded later
-			})
-		}
-		return nil
-	})
-
-	return videos, err
-}
-
-// getTSFiles scans the videos directory and returns a list of .ts files.
-func getTSFiles() ([]VideoInfo, error) {
 	var videos []VideoInfo
 	
 	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
@@ -302,6 +256,7 @@ func getTSFiles() ([]VideoInfo, error) {
 
 	return videos, err
 }
+
 
 // extractUsernameFromPath extracts the username from the video file path.
 // Username is everything before the date pattern (e.g., "_2025-07-13")
@@ -530,62 +485,4 @@ func deleteVideoProgress(videoPath string) {
 	os.WriteFile("./conf/video_progress.json", data, 0644)
 }
 
-// ForceConvertVideo forces conversion of a .ts file to .mp4
-func ForceConvertVideo(c *gin.Context) {
-	videoPath := c.Param("filepath")
-	if videoPath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No video path provided"})
-		return
-	}
-
-	// Remove leading slash
-	if videoPath[0] == '/' {
-		videoPath = videoPath[1:]
-	}
-
-	// Get the deleteTS parameter (default to true)
-	deleteTS := c.DefaultQuery("deleteTS", "true") == "true"
-
-	// Construct full path
-	fullPath := filepath.Join("videos", videoPath)
-	
-	// Check if file exists and is a .ts file
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
-		return
-	}
-
-	if !strings.HasSuffix(strings.ToLower(fullPath), ".ts") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Only .ts files can be converted"})
-		return
-	}
-
-	// Check if MP4 version already exists
-	mp4Path := strings.TrimSuffix(fullPath, ".ts") + ".mp4"
-	if _, err := os.Stat(mp4Path); err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "MP4 file already exists"})
-		return
-	}
-
-	// Convert the file
-	if err := converter.ConvertTSToMP4(fullPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Conversion failed: %v", err)})
-		return
-	}
-
-	// Delete the original .ts file if requested
-	if deleteTS {
-		if err := os.Remove(fullPath); err != nil {
-			// Log warning but don't fail the request
-			fmt.Printf("Warning: Failed to remove original TS file %s: %v\n", fullPath, err)
-		}
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"message": "Conversion completed successfully",
-		"mp4_file": mp4Path,
-		"deleted_ts": deleteTS,
-	})
-}
 
