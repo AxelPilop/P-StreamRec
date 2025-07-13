@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/teacat/chaturbate-dvr/channel"
 	"github.com/teacat/chaturbate-dvr/config"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/server"
@@ -238,6 +239,11 @@ func getVideoFiles() ([]VideoInfo, error) {
 		}
 
 		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".ts") {
+			// Skip files that are currently being recorded
+			if isFileCurrentlyRecording(path) {
+				return nil
+			}
+			
 			// Extract username from filename
 			username := extractUsernameFromPath(path)
 			
@@ -263,6 +269,42 @@ func getVideoFiles() ([]VideoInfo, error) {
 	return videos, err
 }
 
+// isFileCurrentlyRecording checks if a file is currently being recorded by an active channel
+func isFileCurrentlyRecording(filePath string) bool {
+	if server.Manager == nil {
+		return false
+	}
+	
+	// Get absolute path of the file
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return false
+	}
+	
+	// Check all active channels
+	var isRecording bool
+	server.Manager.Channels.Range(func(key, value any) bool {
+		ch := value.(*channel.Channel)
+		
+		// Skip paused channels
+		if ch.Config.IsPaused {
+			return true // continue iteration
+		}
+		
+		// Check if channel has an active file and it matches our file
+		if ch.File != nil {
+			channelFilePath, err := filepath.Abs(ch.File.Name())
+			if err == nil && channelFilePath == absPath {
+				isRecording = true
+				return false // stop iteration
+			}
+		}
+		
+		return true // continue iteration
+	})
+	
+	return isRecording
+}
 
 // extractUsernameFromPath extracts the username from the video file path.
 // Username is everything before the date pattern (e.g., "_2025-07-13")
