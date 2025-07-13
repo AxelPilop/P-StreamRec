@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/r3labs/sse/v2"
 	"github.com/teacat/chaturbate-dvr/channel"
@@ -31,9 +32,14 @@ func New() (*Manager, error) {
 	updateStream := server.CreateStream("updates")
 	updateStream.AutoReplay = false
 
-	return &Manager{
+	manager := &Manager{
 		SSE: server,
-	}, nil
+	}
+	
+	// Start health monitoring
+	go manager.StartHealthMonitoring()
+
+	return manager, nil
 }
 
 // SaveConfig saves the current channels and state to a JSON file.
@@ -208,4 +214,61 @@ func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
 // Subscriber handles SSE subscriptions for the specified channel.
 func (m *Manager) Subscriber(w http.ResponseWriter, r *http.Request) {
 	m.SSE.ServeHTTP(w, r)
+}
+
+// StartHealthMonitoring periodically checks channel health and restarts failed monitors
+func (m *Manager) StartHealthMonitoring() {
+	ticker := time.NewTicker(2 * time.Minute) // Check every 2 minutes
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.checkChannelHealth()
+		}
+	}
+}
+
+// checkChannelHealth checks for failed channels and restarts them
+func (m *Manager) checkChannelHealth() {
+	now := time.Now()
+	
+	m.Channels.Range(func(key, value any) bool {
+		ch := value.(*channel.Channel)
+		username := key.(string)
+		
+		// Skip paused channels
+		if ch.Config.IsPaused {
+			return true
+		}
+		
+		// Check if monitor should be active but isn't responding
+		timeSinceHeartbeat := now.Sub(ch.LastHeartbeat)
+		
+		if ch.MonitorActive && timeSinceHeartbeat > 10*time.Minute {
+			ch.Error("HEALTH_CHECK: Monitor appears stuck (last heartbeat: %v ago), attempting restart", timeSinceHeartbeat)
+			
+			// Try to restart the channel
+			go func(channel *channel.Channel, name string) {
+				// Stop the old monitor
+				channel.Stop()
+				time.Sleep(5 * time.Second) // Give it time to clean up
+				
+				// Restart monitoring
+				channel.Info("HEALTH_CHECK: Restarting monitor due to health check failure")
+				channel.Resume(0)
+			}(ch, username)
+			
+		} else if !ch.MonitorActive && !ch.Config.IsPaused {
+			ch.Error("HEALTH_CHECK: Monitor should be active but isn't, attempting restart")
+			
+			// Restart monitoring for channels that should be running
+			go func(channel *channel.Channel) {
+				channel.Info("HEALTH_CHECK: Starting monitor due to inactive state")
+				channel.Resume(0)
+			}(ch)
+		}
+		
+		return true
+	})
 }

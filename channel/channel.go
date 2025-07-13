@@ -28,15 +28,21 @@ type Channel struct {
 
 	File   *os.File
 	Config *entity.ChannelConfig
+	
+	// Health monitoring fields
+	LastHeartbeat time.Time
+	MonitorActive bool
 }
 
 // New creates a new channel instance with the given manager and configuration.
 func New(conf *entity.ChannelConfig) *Channel {
 	ch := &Channel{
-		LogCh:      make(chan string),
-		UpdateCh:   make(chan bool),
-		Config:     conf,
-		CancelFunc: func() {},
+		LogCh:         make(chan string),
+		UpdateCh:      make(chan bool),
+		Config:        conf,
+		CancelFunc:    func() {},
+		LastHeartbeat: time.Now(),
+		MonitorActive: false,
 	}
 	go ch.Publisher()
 
@@ -113,6 +119,7 @@ func (ch *Channel) ExportInfo() *entity.ChannelInfo {
 func (ch *Channel) Pause() {
 	// Stop the monitoring loop, this also updates `ch.IsOnline` to false
 	// `context.Canceled` → `ch.Monitor()` → `onRetry` → `ch.UpdateOnlineStatus(false)`.
+	ch.MonitorActive = false
 	ch.CancelFunc()
 
 	ch.Config.IsPaused = true
@@ -123,6 +130,7 @@ func (ch *Channel) Pause() {
 // Stop stops the channel and cancels the context.
 func (ch *Channel) Stop() {
 	// Stop the monitoring loop
+	ch.MonitorActive = false
 	ch.CancelFunc()
 
 	ch.Info("channel stopped")
@@ -134,6 +142,8 @@ func (ch *Channel) Stop() {
 // It's only be used when program starting and trying to resume all channels at once.
 func (ch *Channel) Resume(startSeq int) {
 	ch.Config.IsPaused = false
+	ch.MonitorActive = true
+	ch.LastHeartbeat = time.Now()
 
 	ch.Update()
 	ch.Info("channel resumed")
