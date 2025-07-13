@@ -187,6 +187,40 @@ func ServeVideo(c *gin.Context) {
 	// Set appropriate headers for video streaming
 	c.Header("Content-Type", "video/mp2t")
 	c.Header("Accept-Ranges", "bytes")
+	c.Header("Cache-Control", "no-cache")
+	c.File(fullPath)
+}
+
+// ServeVideoCompatible serves video files with better browser compatibility.
+func ServeVideoCompatible(c *gin.Context) {
+	videoPath := c.Param("filepath")
+	if videoPath == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// Remove leading slash
+	if videoPath[0] == '/' {
+		videoPath = videoPath[1:]
+	}
+
+	// Construct full path
+	fullPath := filepath.Join("videos", videoPath)
+	
+	// Check if file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	// Set headers for better compatibility
+	c.Header("Content-Type", "video/mp4")
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Range")
+	
 	c.File(fullPath)
 }
 
