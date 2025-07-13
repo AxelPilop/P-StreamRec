@@ -241,9 +241,15 @@ func getVideoFiles() ([]VideoInfo, error) {
 			// Extract username from filename
 			username := extractUsernameFromPath(path)
 			
+			// Store relative path without "videos/" prefix for URL generation
+			relativePath := path
+			if strings.HasPrefix(relativePath, "videos/") {
+				relativePath = relativePath[7:] // Remove "videos/" prefix
+			}
+			
 			videos = append(videos, VideoInfo{
 				Name:         info.Name(),
-				Path:         path,
+				Path:         relativePath,
 				Size:         info.Size(),
 				SizeFormatted: formatFileSize(info.Size()),
 				ModTime:      info.ModTime(),
