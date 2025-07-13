@@ -107,11 +107,12 @@ func UpdateConfig(c *gin.Context) {
 
 // VideoInfo represents information about a video file.
 type VideoInfo struct {
-	Name     string
-	Path     string
-	Size     int64
-	ModTime  time.Time
-	Username string
+	Name         string
+	Path         string
+	Size         int64
+	SizeFormatted string
+	ModTime      time.Time
+	Username     string
 }
 
 // VideoList renders a page with available videos.
@@ -170,11 +171,12 @@ func getVideoFiles() ([]VideoInfo, error) {
 			username := extractUsernameFromPath(path)
 			
 			videos = append(videos, VideoInfo{
-				Name:     info.Name(),
-				Path:     path,
-				Size:     info.Size(),
-				ModTime:  info.ModTime(),
-				Username: username,
+				Name:         info.Name(),
+				Path:         path,
+				Size:         info.Size(),
+				SizeFormatted: formatFileSize(info.Size()),
+				ModTime:      info.ModTime(),
+				Username:     username,
 			})
 		}
 		return nil
@@ -194,4 +196,17 @@ func extractUsernameFromPath(path string) string {
 		return parts[0]
 	}
 	return "unknown"
+}
+
+// formatFileSize formats file size in human readable format.
+func formatFileSize(size int64) string {
+	if size >= 1073741824 {
+		return fmt.Sprintf("%.2f GB", float64(size)/1073741824)
+	} else if size >= 1048576 {
+		return fmt.Sprintf("%.2f MB", float64(size)/1048576)
+	} else if size >= 1024 {
+		return fmt.Sprintf("%.2f KB", float64(size)/1024)
+	} else {
+		return fmt.Sprintf("%d B", size)
+	}
 }

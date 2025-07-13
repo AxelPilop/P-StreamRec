@@ -113,13 +113,7 @@
                                         <span class="ts-badge is-small">{{ .Username }}</span>
                                     </td>
                                     <td class="file-size">
-                                        {{ if gt .Size 1073741824 }}
-                                            {{ printf "%.2f GB" (div (float64 .Size) 1073741824) }}
-                                        {{ else if gt .Size 1048576 }}
-                                            {{ printf "%.2f MB" (div (float64 .Size) 1048576) }}
-                                        {{ else }}
-                                            {{ printf "%.2f KB" (div (float64 .Size) 1024) }}
-                                        {{ end }}
+                                        {{ .SizeFormatted }}
                                     </td>
                                     <td>
                                         {{ .ModTime.Format "2006-01-02 15:04:05" }}
