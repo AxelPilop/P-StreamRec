@@ -47,20 +47,31 @@ type ChannelInfo struct {
 	GlobalConfig *Config // for nested template to access $.Config
 }
 
+// VideoProgress represents the viewing progress of a video.
+type VideoProgress struct {
+	VideoPath       string  `json:"video_path"`
+	CurrentTime     float64 `json:"current_time"`
+	Duration        float64 `json:"duration"`
+	PercentWatched  float64 `json:"percent_watched"`
+	LastWatchedAt   int64   `json:"last_watched_at"`
+	IsCompleted     bool    `json:"is_completed"`
+}
+
 // Config holds the configuration for the application.
 type Config struct {
-	Version       string
-	Username      string
-	AdminUsername string
-	AdminPassword string
-	Framerate     int
-	Resolution    int
-	Pattern       string
-	MaxDuration   int
-	MaxFilesize   int
-	Port          string
-	Interval      int
-	Cookies       string
-	UserAgent     string
-	Domain        string
+	Version            string
+	Username           string
+	AdminUsername      string
+	AdminPassword      string
+	Framerate          int
+	Resolution         int
+	Pattern            string
+	MaxDuration        int
+	MaxFilesize        int
+	Port               string
+	Interval           int
+	Cookies            string
+	UserAgent          string
+	Domain             string
+	AutoDeleteWatched  bool   `json:"auto_delete_watched"`
 }

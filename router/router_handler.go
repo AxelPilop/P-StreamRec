@@ -1,10 +1,13 @@
 package router
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,9 +98,10 @@ func Updates(c *gin.Context) {
 
 // UpdateConfigRequest represents the request body for updating configuration.
 type UpdateConfigRequest struct {
-	Cookies   string `form:"cookies"`
-	UserAgent string `form:"user_agent"`
-	Pattern   string `form:"pattern"`
+	Cookies           string `form:"cookies"`
+	UserAgent         string `form:"user_agent"`
+	Pattern           string `form:"pattern"`
+	AutoDeleteWatched bool   `form:"auto_delete_watched"`
 }
 
 // UpdateConfig updates the server configuration.
@@ -111,6 +115,7 @@ func UpdateConfig(c *gin.Context) {
 	server.Config.Cookies = req.Cookies
 	server.Config.UserAgent = req.UserAgent
 	server.Config.Pattern = req.Pattern
+	server.Config.AutoDeleteWatched = req.AutoDeleteWatched
 
 	// Save settings persistently
 	if err := config.SavePersistentSettings(server.Config); err != nil {
@@ -129,6 +134,16 @@ type VideoInfo struct {
 	SizeFormatted string
 	ModTime      time.Time
 	Username     string
+	Progress     *entity.VideoProgress
+}
+
+// StreamerVideoData represents videos grouped by streamer.
+type StreamerVideoData struct {
+	Username   string
+	VideoCount int
+	Videos     []VideoInfo
+	TotalSize  int64
+	TotalSizeFormatted string
 }
 
 // VideoList renders a page with available videos.
@@ -138,6 +153,9 @@ func VideoList(c *gin.Context) {
 		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to list videos: %w", err))
 		return
 	}
+
+	// Load video progress for each video
+	loadVideoProgress(&videos)
 
 	c.HTML(200, "videos.html", gin.H{
 		"Videos": videos,
@@ -193,6 +211,7 @@ func getVideoFiles() ([]VideoInfo, error) {
 				SizeFormatted: formatFileSize(info.Size()),
 				ModTime:      info.ModTime(),
 				Username:     username,
+				Progress:     nil, // Will be loaded later
 			})
 		}
 		return nil
@@ -225,4 +244,193 @@ func formatFileSize(size int64) string {
 	} else {
 		return fmt.Sprintf("%d B", size)
 	}
+}
+
+// DeleteVideo deletes a video file.
+func DeleteVideo(c *gin.Context) {
+	videoPath := c.Param("filepath")
+	if videoPath == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// Remove leading slash
+	if videoPath[0] == '/' {
+		videoPath = videoPath[1:]
+	}
+
+	// Construct full path
+	fullPath := filepath.Join("videos", videoPath)
+	
+	// Check if file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	// Delete the file
+	if err := os.Remove(fullPath); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to delete video: %w", err))
+		return
+	}
+
+	// Also remove progress data for this video
+	deleteVideoProgress(videoPath)
+
+	c.JSON(200, gin.H{"success": true})
+}
+
+// UpdateVideoProgress updates the viewing progress of a video.
+func UpdateVideoProgress(c *gin.Context) {
+	var progress entity.VideoProgress
+	if err := c.ShouldBindJSON(&progress); err != nil {
+		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("bind: %w", err))
+		return
+	}
+
+	// Calculate percentage
+	if progress.Duration > 0 {
+		progress.PercentWatched = (progress.CurrentTime / progress.Duration) * 100
+		progress.IsCompleted = progress.PercentWatched >= 99.0 // Consider 99% as completed
+	}
+
+	progress.LastWatchedAt = time.Now().Unix()
+
+	// Save progress
+	if err := saveVideoProgress(&progress); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to save progress: %w", err))
+		return
+	}
+
+	// Auto-delete if enabled and video is completed
+	if server.Config.AutoDeleteWatched && progress.IsCompleted {
+		fullPath := filepath.Join("videos", progress.VideoPath)
+		if err := os.Remove(fullPath); err == nil {
+			deleteVideoProgress(progress.VideoPath)
+		}
+	}
+
+	c.JSON(200, gin.H{"success": true})
+}
+
+// GetVideoProgress returns the viewing progress of a video.
+func GetVideoProgress(c *gin.Context) {
+	videoPath := c.Param("filepath")
+	if videoPath == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	// Remove leading slash
+	if videoPath[0] == '/' {
+		videoPath = videoPath[1:]
+	}
+
+	progress := loadVideoProgressForPath(videoPath)
+	if progress == nil {
+		c.JSON(200, gin.H{"progress": nil})
+		return
+	}
+
+	c.JSON(200, gin.H{"progress": progress})
+}
+
+// groupVideosByStreamer groups videos by streamer username.
+func groupVideosByStreamer(videos []VideoInfo) []StreamerVideoData {
+	streamerMap := make(map[string][]VideoInfo)
+	
+	for _, video := range videos {
+		streamerMap[video.Username] = append(streamerMap[video.Username], video)
+	}
+	
+	var streamers []StreamerVideoData
+	for username, videos := range streamerMap {
+		// Sort videos by modification time (newest first)
+		sort.Slice(videos, func(i, j int) bool {
+			return videos[i].ModTime.After(videos[j].ModTime)
+		})
+		
+		// Calculate total size
+		var totalSize int64
+		for _, video := range videos {
+			totalSize += video.Size
+		}
+		
+		streamers = append(streamers, StreamerVideoData{
+			Username:           username,
+			VideoCount:         len(videos),
+			Videos:             videos,
+			TotalSize:          totalSize,
+			TotalSizeFormatted: formatFileSize(totalSize),
+		})
+	}
+	
+	// Sort streamers by username
+	sort.Slice(streamers, func(i, j int) bool {
+		return streamers[i].Username < streamers[j].Username
+	})
+	
+	return streamers
+}
+
+// loadVideoProgress loads viewing progress for all videos.
+func loadVideoProgress(videos *[]VideoInfo) {
+	progressData := loadAllVideoProgress()
+	
+	for i := range *videos {
+		if progress, exists := progressData[(*videos)[i].Path]; exists {
+			(*videos)[i].Progress = &progress
+		}
+	}
+}
+
+// loadVideoProgressForPath loads viewing progress for a specific video path.
+func loadVideoProgressForPath(videoPath string) *entity.VideoProgress {
+	progressData := loadAllVideoProgress()
+	if progress, exists := progressData[videoPath]; exists {
+		return &progress
+	}
+	return nil
+}
+
+// loadAllVideoProgress loads all video progress data from file.
+func loadAllVideoProgress() map[string]entity.VideoProgress {
+	progressFile := "./conf/video_progress.json"
+	progressData := make(map[string]entity.VideoProgress)
+	
+	if data, err := os.ReadFile(progressFile); err == nil {
+		json.Unmarshal(data, &progressData)
+	}
+	
+	return progressData
+}
+
+// saveVideoProgress saves viewing progress for a video.
+func saveVideoProgress(progress *entity.VideoProgress) error {
+	progressData := loadAllVideoProgress()
+	progressData[progress.VideoPath] = *progress
+	
+	// Ensure conf directory exists
+	if err := os.MkdirAll("./conf", 0755); err != nil {
+		return err
+	}
+	
+	data, err := json.MarshalIndent(progressData, "", "  ")
+	if err != nil {
+		return err
+	}
+	
+	return os.WriteFile("./conf/video_progress.json", data, 0644)
+}
+
+// deleteVideoProgress deletes viewing progress for a video.
+func deleteVideoProgress(videoPath string) {
+	progressData := loadAllVideoProgress()
+	delete(progressData, videoPath)
+	
+	// Ensure conf directory exists
+	os.MkdirAll("./conf", 0755)
+	
+	data, _ := json.MarshalIndent(progressData, "", "  ")
+	os.WriteFile("./conf/video_progress.json", data, 0644)
 }

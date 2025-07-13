@@ -30,6 +30,34 @@
                 color: #666;
                 font-size: 0.9em;
             }
+            .progress-bar {
+                height: 4px;
+                background-color: #e0e0e0;
+                border-radius: 2px;
+                overflow: hidden;
+                margin-top: 0.5rem;
+            }
+            .progress-fill {
+                height: 100%;
+                background-color: #007bff;
+                transition: width 0.3s ease;
+            }
+            .completed-badge {
+                background-color: #28a745;
+                color: white;
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 0.8em;
+                margin-left: 0.5rem;
+            }
+            .watched-badge {
+                background-color: #ffc107;
+                color: #212529;
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 0.8em;
+                margin-left: 0.5rem;
+            }
         </style>
     </head>
 
@@ -76,12 +104,33 @@
             <div class="ts-divider has-vertically-spaced-large"></div>
             <div class="ts-box" id="video-player-container" style="display: none;">
                 <div class="ts-content is-padded">
-                    <div class="ts-header is-large" id="video-title">Select a video to play</div>
+                    <div class="ts-grid is-middle-aligned">
+                        <div class="column is-fluid">
+                            <div class="ts-header is-large" id="video-title">Select a video to play</div>
+                            <div class="ts-meta">
+                                <div class="item">
+                                    <span class="ts-text is-description" id="video-info">No video selected</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <button class="ts-button is-outlined is-close-icon" onclick="closeVideoPlayer()">
+                                <span class="ts-icon is-x-icon"></span>
+                                Close
+                            </button>
+                        </div>
+                    </div>
                     <div class="video-player">
                         <video id="video-player" controls width="100%" style="margin-top: 1rem;">
                             <source id="video-source" src="" type="video/mp2t">
                             Your browser does not support the video tag.
                         </video>
+                    </div>
+                    <div class="progress-bar" style="margin-top: 1rem;">
+                        <div class="progress-fill" id="video-progress" style="width: 0%;"></div>
+                    </div>
+                    <div class="ts-text is-description" style="margin-top: 0.5rem;">
+                        <span id="progress-text">0% watched</span>
                     </div>
                 </div>
             </div>
@@ -100,6 +149,7 @@
                                     <th>Username</th>
                                     <th>Size</th>
                                     <th>Date</th>
+                                    <th>Progress</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -108,6 +158,13 @@
                                 <tr class="video-item" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
                                     <td>
                                         <div class="ts-text is-bold">{{ .Name }}</div>
+                                        {{ if .Progress }}
+                                            {{ if .Progress.IsCompleted }}
+                                                <span class="completed-badge">Completed</span>
+                                            {{ else if gt .Progress.PercentWatched 0 }}
+                                                <span class="watched-badge">{{ printf "%.0f" .Progress.PercentWatched }}% watched</span>
+                                            {{ end }}
+                                        {{ end }}
                                     </td>
                                     <td>
                                         <span class="ts-badge is-small">{{ .Username }}</span>
@@ -119,6 +176,15 @@
                                         {{ .ModTime.Format "2006-01-02 15:04:05" }}
                                     </td>
                                     <td>
+                                        {{ if .Progress }}
+                                            <div class="progress-bar" style="width: 80px;">
+                                                <div class="progress-fill" style="width: {{ .Progress.PercentWatched }}%;"></div>
+                                            </div>
+                                        {{ else }}
+                                            <span class="ts-text is-description">Not started</span>
+                                        {{ end }}
+                                    </td>
+                                    <td>
                                         <button class="ts-button is-small is-start-icon play-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
                                             <span class="ts-icon is-play-icon"></span>
                                             Play
@@ -127,6 +193,10 @@
                                             <span class="ts-icon is-download-icon"></span>
                                             Download
                                         </a>
+                                        <button class="ts-button is-small is-start-icon is-negative delete-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
+                                            <span class="ts-icon is-trash-icon"></span>
+                                            Delete
+                                        </button>
                                     </td>
                                 </tr>
                                 {{ end }}
@@ -141,16 +211,22 @@
         <!-- / Main Section -->
 
         <script>
+            let currentVideoPath = null;
+            let progressInterval = null;
+
             // Function to play video
             function playVideo(videoPath, videoName) {
+                currentVideoPath = videoPath;
                 const playerContainer = document.getElementById('video-player-container');
                 const videoPlayer = document.getElementById('video-player');
                 const videoSource = document.getElementById('video-source');
                 const videoTitle = document.getElementById('video-title');
+                const videoInfo = document.getElementById('video-info');
                 
                 // Set video source
                 videoSource.src = '/videos/' + videoPath;
                 videoTitle.textContent = videoName;
+                videoInfo.textContent = 'Loading...';
                 
                 // Show player container
                 playerContainer.style.display = 'block';
@@ -158,33 +234,196 @@
                 // Load new video
                 videoPlayer.load();
                 
+                // Load existing progress
+                loadVideoProgress(videoPath);
+                
+                // Set up progress tracking
+                setupProgressTracking(videoPlayer, videoPath);
+                
                 // Scroll to player
                 playerContainer.scrollIntoView({ behavior: 'smooth' });
             }
 
-            // Add event listeners to play buttons
-            document.querySelectorAll('.play-btn').forEach(button => {
-                button.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    const videoPath = this.getAttribute('data-video-path');
-                    const videoName = this.getAttribute('data-video-name');
-                    playVideo(videoPath, videoName);
-                });
-            });
+            // Function to close video player
+            function closeVideoPlayer() {
+                const playerContainer = document.getElementById('video-player-container');
+                const videoPlayer = document.getElementById('video-player');
+                
+                videoPlayer.pause();
+                playerContainer.style.display = 'none';
+                
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                }
+                
+                currentVideoPath = null;
+            }
 
-            // Add event listeners to table rows
-            document.querySelectorAll('.video-item').forEach(row => {
-                row.addEventListener('click', function(e) {
-                    // Don't trigger if clicking on buttons
-                    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) {
-                        return;
+            // Function to load video progress
+            function loadVideoProgress(videoPath) {
+                fetch('/api/video_progress/' + videoPath)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.progress) {
+                            const progress = data.progress;
+                            const videoPlayer = document.getElementById('video-player');
+                            const videoInfo = document.getElementById('video-info');
+                            
+                            videoPlayer.currentTime = progress.current_time;
+                            updateProgressDisplay(progress.percent_watched);
+                            
+                            if (progress.is_completed) {
+                                videoInfo.textContent = 'Completed - ' + Math.round(progress.percent_watched) + '% watched';
+                            } else if (progress.percent_watched > 0) {
+                                videoInfo.textContent = 'Previously watched - ' + Math.round(progress.percent_watched) + '% complete';
+                            } else {
+                                videoInfo.textContent = 'Not started';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.log('No progress data available');
+                    });
+            }
+
+            // Function to setup progress tracking
+            function setupProgressTracking(videoPlayer, videoPath) {
+                videoPlayer.addEventListener('loadedmetadata', function() {
+                    const videoInfo = document.getElementById('video-info');
+                    const duration = formatDuration(videoPlayer.duration);
+                    videoInfo.textContent = 'Duration: ' + duration;
+                });
+
+                videoPlayer.addEventListener('timeupdate', function() {
+                    if (videoPlayer.duration > 0) {
+                        const currentTime = videoPlayer.currentTime;
+                        const duration = videoPlayer.duration;
+                        const percentWatched = (currentTime / duration) * 100;
+                        
+                        updateProgressDisplay(percentWatched);
                     }
-                    
-                    const videoPath = this.getAttribute('data-video-path');
-                    const videoName = this.getAttribute('data-video-name');
-                    playVideo(videoPath, videoName);
+                });
+
+                // Save progress periodically
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                }
+                
+                progressInterval = setInterval(() => {
+                    if (videoPlayer.duration > 0 && currentVideoPath) {
+                        const progress = {
+                            video_path: currentVideoPath,
+                            current_time: videoPlayer.currentTime,
+                            duration: videoPlayer.duration,
+                            percent_watched: (videoPlayer.currentTime / videoPlayer.duration) * 100
+                        };
+                        
+                        fetch('/api/video_progress', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(progress)
+                        });
+                    }
+                }, 10000); // Save every 10 seconds
+            }
+
+            // Function to update progress display
+            function updateProgressDisplay(percent) {
+                const progressFill = document.getElementById('video-progress');
+                const progressText = document.getElementById('progress-text');
+                
+                progressFill.style.width = Math.min(percent, 100) + '%';
+                progressText.textContent = Math.round(percent) + '% watched';
+            }
+
+            // Function to format duration
+            function formatDuration(seconds) {
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                const secs = Math.floor(seconds % 60);
+                
+                if (hours > 0) {
+                    return hours + ':' + minutes.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
+                } else {
+                    return minutes + ':' + secs.toString().padStart(2, '0');
+                }
+            }
+
+            // Function to delete video
+            function deleteVideo(videoPath, videoName) {
+                if (confirm('Are you sure you want to delete "' + videoName + '"?')) {
+                    fetch('/videos/delete/' + videoPath, {
+                        method: 'DELETE'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Remove the video row from the table
+                            const videoRow = document.querySelector(`tr[data-video-path="${videoPath}"]`);
+                            if (videoRow) {
+                                videoRow.remove();
+                            }
+                            
+                            // Close player if this video was being played
+                            if (currentVideoPath === videoPath) {
+                                closeVideoPlayer();
+                            }
+                            
+                            // Update video count
+                            const videoCount = document.querySelectorAll('.video-item').length;
+                            document.querySelector('.ts-meta .item span').textContent = videoCount + ' video(s) found';
+                        } else {
+                            alert('Failed to delete video');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error deleting video');
+                    });
+                }
+            }
+
+            // Add event listeners when DOM is loaded
+            document.addEventListener('DOMContentLoaded', function() {
+                // Add event listeners to play buttons
+                document.querySelectorAll('.play-btn').forEach(button => {
+                    button.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const videoPath = this.getAttribute('data-video-path');
+                        const videoName = this.getAttribute('data-video-name');
+                        playVideo(videoPath, videoName);
+                    });
+                });
+
+                // Add event listeners to delete buttons
+                document.querySelectorAll('.delete-btn').forEach(button => {
+                    button.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const videoPath = this.getAttribute('data-video-path');
+                        const videoName = this.getAttribute('data-video-name');
+                        deleteVideo(videoPath, videoName);
+                    });
+                });
+
+                // Add event listeners to table rows
+                document.querySelectorAll('.video-item').forEach(row => {
+                    row.addEventListener('click', function(e) {
+                        // Don't trigger if clicking on buttons
+                        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) {
+                            return;
+                        }
+                        
+                        const videoPath = this.getAttribute('data-video-path');
+                        const videoName = this.getAttribute('data-video-name');
+                        playVideo(videoPath, videoName);
+                    });
                 });
             });
         </script>

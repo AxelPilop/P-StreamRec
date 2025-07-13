@@ -157,6 +157,21 @@
                             </div>
                         </div>
                         <!-- / Default Filename Pattern -->
+
+                        <!-- Auto-Delete Watched Videos -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Auto-Delete Watched Videos</div>
+                            <div class="content">
+                                <div class="ts-checkbox">
+                                    <input type="checkbox" name="auto_delete_watched" {{ if .Config.AutoDeleteWatched }}checked{{ end }}>
+                                    <label>Automatically delete videos after watching 100%</label>
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">
+                                    When enabled, videos will be automatically deleted once they have been watched to completion (99% or more).
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Auto-Delete Watched Videos -->
                     </div>
 
                     <div class="ts-divider"></div>
