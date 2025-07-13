@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/teacat/chaturbate-dvr/config"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/server"
 )
@@ -90,6 +91,7 @@ func Updates(c *gin.Context) {
 type UpdateConfigRequest struct {
 	Cookies   string `form:"cookies"`
 	UserAgent string `form:"user_agent"`
+	Pattern   string `form:"pattern"`
 }
 
 // UpdateConfig updates the server configuration.
@@ -102,6 +104,14 @@ func UpdateConfig(c *gin.Context) {
 
 	server.Config.Cookies = req.Cookies
 	server.Config.UserAgent = req.UserAgent
+	server.Config.Pattern = req.Pattern
+
+	// Save settings persistently
+	if err := config.SavePersistentSettings(server.Config); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Warning: Failed to save settings: %v\n", err)
+	}
+
 	c.Redirect(http.StatusFound, "/")
 }
 

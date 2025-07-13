@@ -143,6 +143,20 @@
                             </div>
                         </div>
                         <!-- / User Agent -->
+
+                        <!-- Default Filename Pattern -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Default Filename Pattern</div>
+                            <div class="content">
+                                <div class="ts-input">
+                                    <input type="text" name="pattern" value="{{ .Config.Pattern }}" />
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">
+                                    Default pattern for new channels. Available variables: {{.Username}}, {{.Year}}, {{.Month}}, {{.Day}}, {{.Hour}}, {{.Minute}}, {{.Second}}, {{.Sequence}}
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Default Filename Pattern -->
                     </div>
 
                     <div class="ts-divider"></div>
@@ -151,8 +165,8 @@
                         <div class="ts-grid is-middle-aligned">
                             <div class="column is-fluid">
                                 <div class="ts-text is-description">
-                                    <span class="ts-icon is-triangle-exclamation-icon is-end-spaced"></span>
-                                    Changes will be reverted after the program restarts
+                                    <span class="ts-icon is-check-icon is-end-spaced"></span>
+                                    Settings are automatically saved and will persist after restart
                                 </div>
                             </div>
                             <div class="column">
