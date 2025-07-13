@@ -113,3 +113,14 @@
 </div>
 <!-- / Actions -->
 {{ end }}
+
+{{ define "channel_status" }}
+{{ if .IsOnline }}
+<span class="ts-badge is-positive">● Online</span>
+{{ else }}
+<span class="ts-badge is-secondary">● Offline</span>
+{{ end }}
+{{ if .IsPaused }}
+<span class="ts-badge is-warning">⏸ Paused</span>
+{{ end }}
+{{ end }}

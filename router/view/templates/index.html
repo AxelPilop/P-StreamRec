@@ -15,6 +15,27 @@
         <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
         <link rel="manifest" href="/static/site.webmanifest">
         <title>P-StreamRec</title>
+        <style>
+            .channel-header {
+                transition: background-color 0.2s ease;
+            }
+            .channel-header:hover {
+                background-color: rgba(0, 0, 0, 0.05);
+            }
+            .expand-arrow {
+                transition: transform 0.2s ease;
+                font-size: 1.2em;
+                color: #666;
+            }
+            .channel-details {
+                transition: opacity 0.3s ease;
+            }
+            .channel-status {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+        </style>
     </head>
 
     <body hx-ext="sse">
@@ -74,26 +95,42 @@
             <!-- Channels -->
             <div class="ts-wrap is-vertical has-top-spaced-large" sse-connect="/updates?stream=updates">
                 {{ range .Channels }}
-                <div class="ts-box is-horizontal">
-                     <!-- Info Section -->
-                     <div sse-swap="{{ .Username }}-info" class="ts-content is-padded has-break-all" style="width: 400px; line-height: 1.45; padding-right: 0">
-                        {{ template "channel_info" . }}
-                    </div>
-                    <!-- / Info Section -->
-
-                    <!-- Log Section -->
-                    <div class="ts-content is-padded" style="flex: 1; gap: 0.8rem; display: flex; flex-direction: column">
-                        <div class="ts-input" style="flex: 1">
-                            <textarea class="has-full-height" readonly sse-swap="{{ .Username }}-log" style="scrollbar-width: thin">{{ range .Logs }}{{ . }}&NewLine;{{ end }}</textarea>
+                <div class="ts-box">
+                    <!-- Compact Channel Header -->
+                    <div class="ts-content is-padded channel-header" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 1rem;" onclick="toggleChannelDetails('{{ .Username }}')">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <div class="ts-text is-bold is-large">{{ .Username }}</div>
+                            <div sse-swap="{{ .Username }}-status" class="channel-status">
+                                {{ template "channel_status" . }}
+                            </div>
                         </div>
-                        <div>
-                            <label class="ts-switch is-small" style="display: flex">
-                                <input type="checkbox" checked />
-                                Auto-Update & Scroll Logs
-                            </label>
+                        <div class="expand-arrow" id="arrow-{{ .Username }}">▼</div>
+                    </div>
+                    
+                    <!-- Detailed Channel Info (Hidden by default) -->
+                    <div class="channel-details" id="details-{{ .Username }}" style="display: none;">
+                        <div class="ts-divider"></div>
+                        <div class="ts-box is-horizontal">
+                            <!-- Info Section -->
+                            <div sse-swap="{{ .Username }}-info" class="ts-content is-padded has-break-all" style="width: 400px; line-height: 1.45; padding-right: 0">
+                                {{ template "channel_info" . }}
+                            </div>
+                            <!-- / Info Section -->
+                            <!-- Log Section -->
+                            <div class="ts-content is-padded" style="flex: 1; gap: 0.8rem; display: flex; flex-direction: column">
+                                <div class="ts-input" style="flex: 1">
+                                    <textarea class="has-full-height" readonly sse-swap="{{ .Username }}-log" style="scrollbar-width: thin">{{ range .Logs }}{{ . }}&NewLine;{{ end }}</textarea>
+                                </div>
+                                <div>
+                                    <label class="ts-switch is-small" style="display: flex">
+                                        <input type="checkbox" checked />
+                                        Auto-Update & Scroll Logs
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- / Log Section -->
                         </div>
                     </div>
-                    <!-- / Log Section -->
                 </div>
                 {{ end }}
             </div>
@@ -368,6 +405,20 @@
                     updateRecordingCount();
                 }
             })
+
+            // Function to toggle channel details
+            function toggleChannelDetails(username) {
+                const details = document.getElementById('details-' + username);
+                const arrow = document.getElementById('arrow-' + username);
+                
+                if (details.style.display === 'none') {
+                    details.style.display = 'block';
+                    arrow.textContent = '▲';
+                } else {
+                    details.style.display = 'none';
+                    arrow.textContent = '▼';
+                }
+            }
 
             // Initial count on page load
             document.addEventListener("DOMContentLoaded", function() {

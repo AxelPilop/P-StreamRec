@@ -186,6 +186,17 @@ func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
 			Event: []byte(info.Username + "-info"),
 			Data:  b.Bytes(),
 		})
+		
+		// Also publish status update for compact view
+		var statusBuffer bytes.Buffer
+		if err := view.InfoTpl.ExecuteTemplate(&statusBuffer, "channel_status", info); err != nil {
+			fmt.Println("Error executing status template:", err)
+			return
+		}
+		m.SSE.Publish("updates", &sse.Event{
+			Event: []byte(info.Username + "-status"),
+			Data:  statusBuffer.Bytes(),
+		})
 	case entity.EventLog:
 		m.SSE.Publish("updates", &sse.Event{
 			Event: []byte(info.Username + "-log"),
