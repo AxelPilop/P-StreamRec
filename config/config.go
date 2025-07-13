@@ -13,28 +13,30 @@ const configFilePath = "conf/settings.json"
 
 // PersistentSettings holds the settings that should be saved between restarts
 type PersistentSettings struct {
-	Cookies   string `json:"cookies"`
-	UserAgent string `json:"user_agent"`
-	Pattern   string `json:"pattern"`
+	Cookies           string `json:"cookies"`
+	UserAgent         string `json:"user_agent"`
+	Pattern           string `json:"pattern"`
+	AutoDeleteWatched bool   `json:"auto_delete_watched"`
 }
 
 // New initializes a new Config struct with values from the CLI context.
 func New(c *cli.Context) (*entity.Config, error) {
 	config := &entity.Config{
-		Version:       c.App.Version,
-		Username:      c.String("username"),
-		AdminUsername: c.String("admin-username"),
-		AdminPassword: c.String("admin-password"),
-		Framerate:     c.Int("framerate"),
-		Resolution:    c.Int("resolution"),
-		Pattern:       c.String("pattern"),
-		MaxDuration:   c.Int("max-duration") * 60,
-		MaxFilesize:   c.Int("max-filesize"),
-		Port:          c.String("port"),
-		Interval:      c.Int("interval"),
-		Cookies:       c.String("cookies"),
-		UserAgent:     c.String("user-agent"),
-		Domain:        c.String("domain"),
+		Version:           c.App.Version,
+		Username:          c.String("username"),
+		AdminUsername:     c.String("admin-username"),
+		AdminPassword:     c.String("admin-password"),
+		Framerate:         c.Int("framerate"),
+		Resolution:        c.Int("resolution"),
+		Pattern:           c.String("pattern"),
+		MaxDuration:       c.Int("max-duration") * 60,
+		MaxFilesize:       c.Int("max-filesize"),
+		Port:              c.String("port"),
+		Interval:          c.Int("interval"),
+		Cookies:           c.String("cookies"),
+		UserAgent:         c.String("user-agent"),
+		Domain:            c.String("domain"),
+		AutoDeleteWatched: false, // Default to false
 	}
 
 	// Load persistent settings if they exist
@@ -72,6 +74,8 @@ func LoadPersistentSettings(config *entity.Config) error {
 	if settings.Pattern != "" {
 		config.Pattern = settings.Pattern
 	}
+	// Always load AutoDeleteWatched from settings
+	config.AutoDeleteWatched = settings.AutoDeleteWatched
 
 	return nil
 }
@@ -84,9 +88,10 @@ func SavePersistentSettings(config *entity.Config) error {
 	}
 
 	settings := PersistentSettings{
-		Cookies:   config.Cookies,
-		UserAgent: config.UserAgent,
-		Pattern:   config.Pattern,
+		Cookies:           config.Cookies,
+		UserAgent:         config.UserAgent,
+		Pattern:           config.Pattern,
+		AutoDeleteWatched: config.AutoDeleteWatched,
 	}
 
 	data, err := json.MarshalIndent(settings, "", "  ")
