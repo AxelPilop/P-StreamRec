@@ -1,4 +1,4 @@
-# Chaturbate DVR
+# P-StreamRec
 
 A tool to record **multiple** Chaturbate streams. Supports macOS, Windows, Linux, and Docker. Favicon from [Twemoji](https://github.com/twitter/twemoji).
 
