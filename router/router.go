@@ -64,6 +64,11 @@ func SetupViews(r *gin.Engine) {
 	r.DELETE("/videos/delete/*filepath", DeleteVideo)
 	r.POST("/api/video_progress", UpdateVideoProgress)
 	r.GET("/api/video_progress/*filepath", GetVideoProgress)
+	r.POST("/api/transcode/*filepath", TranscodeVideo)
+	r.GET("/api/transcoding/status", GetTranscodingStatus)
+	r.GET("/api/transcoding/job/:job_id", GetTranscodingJob)
+	r.POST("/api/transcoding/cleanup", CleanupTranscodedFiles)
+	r.POST("/api/transcoding/schedule", ScheduleTranscoding)
 
 }
 

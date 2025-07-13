@@ -172,6 +172,37 @@
                             </div>
                         </div>
                         <!-- / Auto-Delete Watched Videos -->
+                        
+                        <!-- Transcoding Settings -->
+                        <div class="ts-control is-wide has-top-spaced-large">
+                            <div class="label">Video Transcoding</div>
+                            <div class="content">
+                                <div class="ts-checkbox">
+                                    <input type="checkbox" name="transcoding_enabled" {{ if .Config.TranscodingEnabled }}checked{{ end }}>
+                                    <label>Enable automatic transcoding (.ts to .mp4)</label>
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">
+                                    Converts .ts files to .mp4 format for better browser compatibility. Requires FFmpeg to be installed.
+                                </div>
+                                
+                                <div class="ts-select has-top-spaced-small">
+                                    <select name="transcoding_quality">
+                                        <option value="fast" {{ if eq .Config.TranscodingQuality "fast" }}selected{{ end }}>Fast (Lower Quality)</option>
+                                        <option value="medium" {{ if eq .Config.TranscodingQuality "medium" }}selected{{ end }}>Medium (Balanced)</option>
+                                        <option value="slow" {{ if eq .Config.TranscodingQuality "slow" }}selected{{ end }}>Slow (Higher Quality)</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="ts-checkbox has-top-spaced-small">
+                                    <input type="checkbox" name="transcoding_cleanup" {{ if .Config.TranscodingCleanup }}checked{{ end }}>
+                                    <label>Auto-cleanup original .ts files after transcoding</label>
+                                </div>
+                                <div class="ts-text is-description has-top-spaced-small">
+                                    ⚠️ When enabled, original .ts files will be deleted after successful transcoding to .mp4. Use with caution.
+                                </div>
+                            </div>
+                        </div>
+                        <!-- / Transcoding Settings -->
                     </div>
 
                     <div class="ts-divider"></div>

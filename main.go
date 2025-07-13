@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/teacat/chaturbate-dvr/config"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/manager"
 	"github.com/teacat/chaturbate-dvr/router"
 	"github.com/teacat/chaturbate-dvr/server"
+	"github.com/teacat/chaturbate-dvr/transcoding"
 	"github.com/urfave/cli/v2"
 )
 
@@ -30,7 +34,7 @@ const logo = `
 func main() {
 	app := &cli.App{
 		Name:    "chaturbate-dvr",
-		Version: "2025.28.6",
+		Version: "2025.28.7",
 		Usage:   "Record your favorite Chaturbate streams automatically. 😎🫵",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -121,6 +125,17 @@ func start(c *cli.Context) error {
 		return fmt.Errorf("new manager: %w", err)
 	}
 
+	// Initialize transcoding service if enabled
+	if server.Config.TranscodingEnabled {
+		server.TranscodingService = transcoding.NewTranscodingService(2) // 2 concurrent workers
+		server.TranscodingService.Start()
+		
+		// Load existing jobs if any
+		if err := server.TranscodingService.LoadJobsFromFile("./conf/transcoding_jobs.json"); err != nil {
+			fmt.Printf("Warning: Failed to load transcoding jobs: %v\n", err)
+		}
+	}
+
 	// init web interface if username is not provided
 	if server.Config.Username == "" {
 		fmt.Printf("👋 Visit http://localhost:%s to use the Web UI\n\n\n", c.String("port"))
@@ -129,6 +144,9 @@ func start(c *cli.Context) error {
 			return fmt.Errorf("load config: %w", err)
 		}
 
+		// Set up graceful shutdown
+		setupGracefulShutdown()
+		
 		return router.SetupRouter().Run(":" + c.String("port"))
 	}
 
@@ -147,4 +165,32 @@ func start(c *cli.Context) error {
 
 	// block forever
 	select {}
+}
+
+// setupGracefulShutdown sets up graceful shutdown for the application
+func setupGracefulShutdown() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	
+	go func() {
+		<-c
+		fmt.Println("\n🛑 Shutting down gracefully...")
+		
+		// Save transcoding jobs
+		if server.TranscodingService != nil {
+			fmt.Println("💾 Saving transcoding jobs...")
+			if err := server.TranscodingService.SaveJobsToFile("./conf/transcoding_jobs.json"); err != nil {
+				fmt.Printf("Warning: Failed to save transcoding jobs: %v\n", err)
+			}
+			
+			// Stop transcoding service
+			fmt.Println("⏹️  Stopping transcoding service...")
+			server.TranscodingService.Stop()
+		}
+		
+		// Give some time for cleanup
+		time.Sleep(1 * time.Second)
+		fmt.Println("✅ Goodbye!")
+		os.Exit(0)
+	}()
 }

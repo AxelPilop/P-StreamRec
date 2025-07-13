@@ -57,6 +57,30 @@ type VideoProgress struct {
 	IsCompleted     bool    `json:"is_completed"`
 }
 
+// TranscodingJob represents a transcoding job in the queue.
+type TranscodingJob struct {
+	ID           string    `json:"id"`
+	InputPath    string    `json:"input_path"`
+	OutputPath   string    `json:"output_path"`
+	Status       string    `json:"status"` // pending, processing, completed, failed
+	Progress     float64   `json:"progress"`
+	StartedAt    int64     `json:"started_at"`
+	CompletedAt  int64     `json:"completed_at"`
+	ErrorMessage string    `json:"error_message"`
+	FileSize     int64     `json:"file_size"`
+}
+
+// TranscodingStatus represents the overall transcoding system status.
+type TranscodingStatus struct {
+	IsRunning       bool              `json:"is_running"`
+	QueueSize       int               `json:"queue_size"`
+	ActiveJobs      int               `json:"active_jobs"`
+	CompletedJobs   int               `json:"completed_jobs"`
+	FailedJobs      int               `json:"failed_jobs"`
+	CurrentJob      *TranscodingJob   `json:"current_job"`
+	RecentJobs      []TranscodingJob  `json:"recent_jobs"`
+}
+
 // Config holds the configuration for the application.
 type Config struct {
 	Version            string
@@ -74,4 +98,7 @@ type Config struct {
 	UserAgent          string
 	Domain             string
 	AutoDeleteWatched  bool   `json:"auto_delete_watched"`
+	TranscodingEnabled bool   `json:"transcoding_enabled"`
+	TranscodingCleanup bool   `json:"transcoding_cleanup"`
+	TranscodingQuality string `json:"transcoding_quality"` // fast, medium, slow
 }

@@ -13,30 +13,36 @@ const configFilePath = "conf/settings.json"
 
 // PersistentSettings holds the settings that should be saved between restarts
 type PersistentSettings struct {
-	Cookies           string `json:"cookies"`
-	UserAgent         string `json:"user_agent"`
-	Pattern           string `json:"pattern"`
-	AutoDeleteWatched bool   `json:"auto_delete_watched"`
+	Cookies            string `json:"cookies"`
+	UserAgent          string `json:"user_agent"`
+	Pattern            string `json:"pattern"`
+	AutoDeleteWatched  bool   `json:"auto_delete_watched"`
+	TranscodingEnabled bool   `json:"transcoding_enabled"`
+	TranscodingCleanup bool   `json:"transcoding_cleanup"`
+	TranscodingQuality string `json:"transcoding_quality"`
 }
 
 // New initializes a new Config struct with values from the CLI context.
 func New(c *cli.Context) (*entity.Config, error) {
 	config := &entity.Config{
-		Version:           c.App.Version,
-		Username:          c.String("username"),
-		AdminUsername:     c.String("admin-username"),
-		AdminPassword:     c.String("admin-password"),
-		Framerate:         c.Int("framerate"),
-		Resolution:        c.Int("resolution"),
-		Pattern:           c.String("pattern"),
-		MaxDuration:       c.Int("max-duration") * 60,
-		MaxFilesize:       c.Int("max-filesize"),
-		Port:              c.String("port"),
-		Interval:          c.Int("interval"),
-		Cookies:           c.String("cookies"),
-		UserAgent:         c.String("user-agent"),
-		Domain:            c.String("domain"),
-		AutoDeleteWatched: false, // Default to false
+		Version:            c.App.Version,
+		Username:           c.String("username"),
+		AdminUsername:      c.String("admin-username"),
+		AdminPassword:      c.String("admin-password"),
+		Framerate:          c.Int("framerate"),
+		Resolution:         c.Int("resolution"),
+		Pattern:            c.String("pattern"),
+		MaxDuration:        c.Int("max-duration") * 60,
+		MaxFilesize:        c.Int("max-filesize"),
+		Port:               c.String("port"),
+		Interval:           c.Int("interval"),
+		Cookies:            c.String("cookies"),
+		UserAgent:          c.String("user-agent"),
+		Domain:             c.String("domain"),
+		AutoDeleteWatched:  false, // Default to false
+		TranscodingEnabled: true,  // Default to true
+		TranscodingCleanup: false, // Default to false for safety
+		TranscodingQuality: "fast", // Default to fast
 	}
 
 	// Load persistent settings if they exist
@@ -76,6 +82,13 @@ func LoadPersistentSettings(config *entity.Config) error {
 	}
 	// Always load AutoDeleteWatched from settings
 	config.AutoDeleteWatched = settings.AutoDeleteWatched
+	
+	// Load transcoding settings
+	config.TranscodingEnabled = settings.TranscodingEnabled
+	config.TranscodingCleanup = settings.TranscodingCleanup
+	if settings.TranscodingQuality != "" {
+		config.TranscodingQuality = settings.TranscodingQuality
+	}
 
 	return nil
 }
@@ -88,10 +101,13 @@ func SavePersistentSettings(config *entity.Config) error {
 	}
 
 	settings := PersistentSettings{
-		Cookies:           config.Cookies,
-		UserAgent:         config.UserAgent,
-		Pattern:           config.Pattern,
-		AutoDeleteWatched: config.AutoDeleteWatched,
+		Cookies:            config.Cookies,
+		UserAgent:          config.UserAgent,
+		Pattern:            config.Pattern,
+		AutoDeleteWatched:  config.AutoDeleteWatched,
+		TranscodingEnabled: config.TranscodingEnabled,
+		TranscodingCleanup: config.TranscodingCleanup,
+		TranscodingQuality: config.TranscodingQuality,
 	}
 
 	data, err := json.MarshalIndent(settings, "", "  ")
