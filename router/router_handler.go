@@ -228,6 +228,7 @@ func ServeVideoCompatible(c *gin.Context) {
 }
 
 // getVideoFiles scans the videos directory and returns a list of video files.
+// Only returns .mp4 files for display in the video menu.
 func getVideoFiles() ([]VideoInfo, error) {
 	var videos []VideoInfo
 	
@@ -236,7 +237,7 @@ func getVideoFiles() ([]VideoInfo, error) {
 			return err
 		}
 
-		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".ts") {
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".mp4") {
 			// Extract username from filename
 			username := extractUsernameFromPath(path)
 			
@@ -259,8 +260,8 @@ func getVideoFiles() ([]VideoInfo, error) {
 // extractUsernameFromPath extracts the username from the video file path.
 func extractUsernameFromPath(path string) string {
 	filename := filepath.Base(path)
-	// Remove extension
-	name := strings.TrimSuffix(filename, ".ts")
+	// Remove extension (both .ts and .mp4)
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 	// Split by underscore and take the first part as username
 	parts := strings.Split(name, "_")
 	if len(parts) > 0 {
