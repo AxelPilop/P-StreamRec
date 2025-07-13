@@ -153,8 +153,8 @@
             <!-- / Video Player -->
 
             <!-- Video List -->
-            <div class="ts-divider has-vertically-spaced-large"></div>
-            <div class="ts-box">
+            <div class="ts-divider has-vertically-spaced-large" id="video-list-divider"></div>
+            <div class="ts-box" id="video-list-container">
                 <div class="ts-content is-padded">
                     <div class="ts-header is-large">Available Videos</div>
                     <div class="ts-table is-celled" style="margin-top: 1rem;">
@@ -205,10 +205,6 @@
                                             <span class="ts-icon is-play-icon"></span>
                                             Play
                                         </button>
-                                        <a href="/videos/{{ .Path }}" class="ts-button is-small is-start-icon is-outlined" download>
-                                            <span class="ts-icon is-download-icon"></span>
-                                            Download
-                                        </a>
                                         <button class="ts-button is-small is-start-icon is-negative delete-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
                                             <span class="ts-icon is-trash-icon"></span>
                                             Delete
@@ -256,8 +252,10 @@
                 videoTitle.textContent = videoName;
                 videoInfo.textContent = 'Loading...';
                 
-                // Show player container
+                // Show player container and hide video list
                 playerContainer.style.display = 'block';
+                document.getElementById('video-list-container').style.display = 'none';
+                document.getElementById('video-list-divider').style.display = 'none';
                 
                 // Clean up previous HLS instance
                 if (hls) {
@@ -415,6 +413,10 @@
                 }
                 
                 playerContainer.style.display = 'none';
+                
+                // Show video list again
+                document.getElementById('video-list-container').style.display = 'block';
+                document.getElementById('video-list-divider').style.display = 'block';
                 
                 if (progressInterval) {
                     clearInterval(progressInterval);
