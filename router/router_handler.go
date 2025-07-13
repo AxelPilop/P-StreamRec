@@ -14,7 +14,6 @@ import (
 	"github.com/teacat/chaturbate-dvr/config"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/server"
-	"github.com/teacat/chaturbate-dvr/transcoding"
 )
 
 // IndexData represents the data structure for the index page.
@@ -98,13 +97,10 @@ func Updates(c *gin.Context) {
 
 // UpdateConfigRequest represents the request body for updating configuration.
 type UpdateConfigRequest struct {
-	Cookies            string `form:"cookies"`
-	UserAgent          string `form:"user_agent"`
-	Pattern            string `form:"pattern"`
-	AutoDeleteWatched  bool   `form:"auto_delete_watched"`
-	TranscodingEnabled bool   `form:"transcoding_enabled"`
-	TranscodingCleanup bool   `form:"transcoding_cleanup"`
-	TranscodingQuality string `form:"transcoding_quality"`
+	Cookies           string `form:"cookies"`
+	UserAgent         string `form:"user_agent"`
+	Pattern           string `form:"pattern"`
+	AutoDeleteWatched bool   `form:"auto_delete_watched"`
 }
 
 // UpdateConfig updates the server configuration.
@@ -119,25 +115,11 @@ func UpdateConfig(c *gin.Context) {
 	server.Config.UserAgent = req.UserAgent
 	server.Config.Pattern = req.Pattern
 	server.Config.AutoDeleteWatched = req.AutoDeleteWatched
-	server.Config.TranscodingEnabled = req.TranscodingEnabled
-	server.Config.TranscodingCleanup = req.TranscodingCleanup
-	server.Config.TranscodingQuality = req.TranscodingQuality
 
 	// Save settings persistently
 	if err := config.SavePersistentSettings(server.Config); err != nil {
 		// Log error but don't fail the request
 		fmt.Printf("Warning: Failed to save settings: %v\n", err)
-	}
-	
-	// Restart transcoding service if settings changed
-	if server.TranscodingService != nil {
-		if !req.TranscodingEnabled {
-			server.TranscodingService.Stop()
-			server.TranscodingService = nil
-		}
-	} else if req.TranscodingEnabled {
-		server.TranscodingService = transcoding.NewTranscodingService(2)
-		server.TranscodingService.Start()
 	}
 
 	c.Redirect(http.StatusFound, "/")
@@ -246,54 +228,30 @@ func ServeVideoCompatible(c *gin.Context) {
 }
 
 // getVideoFiles scans the videos directory and returns a list of video files.
-// Prioritizes .mp4 files over .ts files for better browser compatibility.
 func getVideoFiles() ([]VideoInfo, error) {
 	var videos []VideoInfo
-	videoMap := make(map[string]VideoInfo) // Map by base filename (without extension)
 	
 	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if !info.IsDir() {
-			ext := strings.ToLower(filepath.Ext(path))
-			if ext == ".ts" || ext == ".mp4" {
-				// Extract username from filename
-				username := extractUsernameFromPath(path)
-				
-				// Get base filename without extension
-				baseFilename := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
-				
-				videoInfo := VideoInfo{
-					Name:         info.Name(),
-					Path:         path,
-					Size:         info.Size(),
-					SizeFormatted: formatFileSize(info.Size()),
-					ModTime:      info.ModTime(),
-					Username:     username,
-					Progress:     nil, // Will be loaded later
-				}
-				
-				// Check if we already have this video
-				if existing, exists := videoMap[baseFilename]; exists {
-					// Prefer .mp4 over .ts
-					if ext == ".mp4" && strings.HasSuffix(existing.Path, ".ts") {
-						videoMap[baseFilename] = videoInfo
-					}
-					// If existing is .mp4 and current is .ts, keep existing
-				} else {
-					videoMap[baseFilename] = videoInfo
-				}
-			}
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".ts") {
+			// Extract username from filename
+			username := extractUsernameFromPath(path)
+			
+			videos = append(videos, VideoInfo{
+				Name:         info.Name(),
+				Path:         path,
+				Size:         info.Size(),
+				SizeFormatted: formatFileSize(info.Size()),
+				ModTime:      info.ModTime(),
+				Username:     username,
+				Progress:     nil, // Will be loaded later
+			})
 		}
 		return nil
 	})
-
-	// Convert map to slice
-	for _, video := range videoMap {
-		videos = append(videos, video)
-	}
 
 	return videos, err
 }
@@ -301,8 +259,8 @@ func getVideoFiles() ([]VideoInfo, error) {
 // extractUsernameFromPath extracts the username from the video file path.
 func extractUsernameFromPath(path string) string {
 	filename := filepath.Base(path)
-	// Remove extension (both .ts and .mp4)
-	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	// Remove extension
+	name := strings.TrimSuffix(filename, ".ts")
 	// Split by underscore and take the first part as username
 	parts := strings.Split(name, "_")
 	if len(parts) > 0 {
@@ -513,184 +471,3 @@ func deleteVideoProgress(videoPath string) {
 	os.WriteFile("./conf/video_progress.json", data, 0644)
 }
 
-// TranscodeVideo adds a video to the transcoding queue.
-func TranscodeVideo(c *gin.Context) {
-	videoPath := c.Param("filepath")
-	if videoPath == "" {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	// Remove leading slash
-	if videoPath[0] == '/' {
-		videoPath = videoPath[1:]
-	}
-
-	// Construct full path
-	fullPath := filepath.Join("videos", videoPath)
-	
-	// Check if file exists and is a .ts file
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
-	}
-
-	if !strings.HasSuffix(strings.ToLower(fullPath), ".ts") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Only .ts files can be transcoded"})
-		return
-	}
-
-	// Generate output path (.mp4)
-	outputPath := strings.TrimSuffix(fullPath, ".ts") + ".mp4"
-
-	// Check if transcoding service is available
-	if server.TranscodingService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Transcoding service not available"})
-		return
-	}
-
-	// Add job to transcoding queue
-	job, err := server.TranscodingService.AddJob(fullPath, outputPath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"job_id":  job.ID,
-		"message": "Video added to transcoding queue",
-	})
-}
-
-// GetTranscodingStatus returns the current transcoding status.
-func GetTranscodingStatus(c *gin.Context) {
-	if server.TranscodingService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Transcoding service not available"})
-		return
-	}
-
-	status := server.TranscodingService.GetStatus()
-	c.JSON(200, gin.H{"status": status})
-}
-
-// GetTranscodingJob returns information about a specific transcoding job.
-func GetTranscodingJob(c *gin.Context) {
-	jobID := c.Param("job_id")
-	if jobID == "" {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	if server.TranscodingService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Transcoding service not available"})
-		return
-	}
-
-	job, exists := server.TranscodingService.GetJob(jobID)
-	if !exists {
-		c.AbortWithStatus(http.StatusNotFound)
-		return
-	}
-
-	c.JSON(200, gin.H{"job": job})
-}
-
-// CleanupTranscodedFiles removes .ts files that have been successfully transcoded to .mp4.
-func CleanupTranscodedFiles(c *gin.Context) {
-	if !server.Config.TranscodingCleanup {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Transcoding cleanup is disabled"})
-		return
-	}
-
-	var cleanedFiles []string
-	var errors []string
-
-	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".ts") {
-			// Check if corresponding .mp4 file exists
-			mp4Path := strings.TrimSuffix(path, ".ts") + ".mp4"
-			if _, err := os.Stat(mp4Path); err == nil {
-				// .mp4 file exists, check if it's newer than .ts file
-				mp4Info, err := os.Stat(mp4Path)
-				if err == nil && mp4Info.ModTime().After(info.ModTime()) {
-					// Remove the .ts file
-					if err := os.Remove(path); err != nil {
-						errors = append(errors, fmt.Sprintf("Failed to remove %s: %v", path, err))
-					} else {
-						cleanedFiles = append(cleanedFiles, path)
-						// Also remove progress data for this file
-						deleteVideoProgress(path)
-					}
-				}
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"success":        true,
-		"cleaned_files":  cleanedFiles,
-		"errors":         errors,
-		"files_cleaned":  len(cleanedFiles),
-	})
-}
-
-// ScheduleTranscoding automatically schedules transcoding for old .ts files.
-func ScheduleTranscoding(c *gin.Context) {
-	if server.TranscodingService == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Transcoding service not available"})
-		return
-	}
-
-	var scheduledJobs []string
-	var errors []string
-	
-	// Find .ts files that are older than 1 hour and don't have corresponding .mp4 files
-	cutoffTime := time.Now().Add(-1 * time.Hour)
-
-	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".ts") {
-			// Check if file is older than cutoff time
-			if info.ModTime().Before(cutoffTime) {
-				// Check if corresponding .mp4 file doesn't exist
-				mp4Path := strings.TrimSuffix(path, ".ts") + ".mp4"
-				if _, err := os.Stat(mp4Path); os.IsNotExist(err) {
-					// Schedule for transcoding
-					job, err := server.TranscodingService.AddJob(path, mp4Path)
-					if err != nil {
-						errors = append(errors, fmt.Sprintf("Failed to schedule %s: %v", path, err))
-					} else {
-						scheduledJobs = append(scheduledJobs, job.ID)
-					}
-				}
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"success":        true,
-		"scheduled_jobs": scheduledJobs,
-		"errors":         errors,
-		"jobs_scheduled": len(scheduledJobs),
-	})
-}

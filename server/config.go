@@ -1,9 +1,5 @@
 package server
 
-import (
-	"github.com/teacat/chaturbate-dvr/entity"
-	"github.com/teacat/chaturbate-dvr/transcoding"
-)
+import "github.com/teacat/chaturbate-dvr/entity"
 
 var Config *entity.Config
-var TranscodingService *transcoding.TranscodingService

@@ -209,12 +209,6 @@
                                             <span class="ts-icon is-download-icon"></span>
                                             Download
                                         </a>
-                                        {{ if and (hasSuffix .Path ".ts") $.Config.TranscodingEnabled }}
-                                        <button class="ts-button is-small is-start-icon is-positive transcode-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
-                                            <span class="ts-icon is-refresh-icon"></span>
-                                            Transcode
-                                        </button>
-                                        {{ end }}
                                         <button class="ts-button is-small is-start-icon is-negative delete-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
                                             <span class="ts-icon is-trash-icon"></span>
                                             Delete
@@ -535,96 +529,6 @@
                 }
             }
 
-            // Function to transcode video
-            function transcodeVideo(videoPath, videoName) {
-                if (confirm('Transcode "' + videoName + '" to MP4 format?\\n\\nThis will create a new .mp4 file for better browser compatibility.')) {
-                    // Update button state
-                    const button = document.querySelector(`button[data-video-path="${videoPath}"].transcode-btn`);
-                    if (button) {
-                        button.disabled = true;
-                        button.innerHTML = '<span class="ts-icon is-spinner-icon"></span> Processing...';
-                    }
-                    
-                    fetch('/api/transcode/' + videoPath, {
-                        method: 'POST'
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            alert('Video added to transcoding queue!\\n\\nJob ID: ' + data.job_id);
-                            
-                            // Optional: Start polling for job status
-                            pollTranscodingJob(data.job_id, videoPath);
-                        } else {
-                            alert('Failed to add video to transcoding queue: ' + (data.error || 'Unknown error'));
-                            // Restore button state
-                            if (button) {
-                                button.disabled = false;
-                                button.innerHTML = '<span class="ts-icon is-refresh-icon"></span> Transcode';
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Error starting transcoding');
-                        // Restore button state
-                        if (button) {
-                            button.disabled = false;
-                            button.innerHTML = '<span class="ts-icon is-refresh-icon"></span> Transcode';
-                        }
-                    });
-                }
-            }
-
-            // Function to poll transcoding job status
-            function pollTranscodingJob(jobId, videoPath) {
-                const checkStatus = () => {
-                    fetch('/api/transcoding/job/' + jobId)
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.job) {
-                                const job = data.job;
-                                const button = document.querySelector(`button[data-video-path="${videoPath}"].transcode-btn`);
-                                
-                                if (job.status === 'completed') {
-                                    if (button) {
-                                        button.innerHTML = '<span class="ts-icon is-check-icon"></span> Completed';
-                                        button.classList.remove('is-positive');
-                                        button.classList.add('is-success');
-                                    }
-                                    
-                                    // Refresh page to show new MP4 file
-                                    setTimeout(() => {
-                                        window.location.reload();
-                                    }, 2000);
-                                } else if (job.status === 'failed') {
-                                    if (button) {
-                                        button.innerHTML = '<span class="ts-icon is-x-icon"></span> Failed';
-                                        button.classList.remove('is-positive');
-                                        button.classList.add('is-negative');
-                                        button.disabled = false;
-                                    }
-                                    alert('Transcoding failed: ' + (job.error_message || 'Unknown error'));
-                                } else if (job.status === 'processing') {
-                                    if (button) {
-                                        button.innerHTML = '<span class="ts-icon is-spinner-icon"></span> ' + Math.round(job.progress) + '%';
-                                    }
-                                    // Continue polling
-                                    setTimeout(checkStatus, 2000);
-                                } else {
-                                    // Still pending, continue polling
-                                    setTimeout(checkStatus, 2000);
-                                }
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error checking transcoding status:', error);
-                        });
-                };
-                
-                // Start polling after a short delay
-                setTimeout(checkStatus, 1000);
-            }
 
             // Add event listeners when DOM is loaded
             document.addEventListener('DOMContentLoaded', function() {
@@ -652,17 +556,6 @@
                     });
                 });
 
-                // Add event listeners to transcode buttons
-                document.querySelectorAll('.transcode-btn').forEach(button => {
-                    button.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        const videoPath = this.getAttribute('data-video-path');
-                        const videoName = this.getAttribute('data-video-name');
-                        transcodeVideo(videoPath, videoName);
-                    });
-                });
 
                 // Add event listeners to table rows
                 document.querySelectorAll('.video-item').forEach(row => {
