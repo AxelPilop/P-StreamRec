@@ -69,7 +69,7 @@ func LoadPersistentSettings(config *entity.Config) error {
 	if config.UserAgent == "" && settings.UserAgent != "" {
 		config.UserAgent = settings.UserAgent
 	}
-	if config.Pattern == "" && settings.Pattern != "" {
+	if settings.Pattern != "" {
 		config.Pattern = settings.Pattern
 	}
 
