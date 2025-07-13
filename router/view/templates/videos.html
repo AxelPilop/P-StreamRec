@@ -79,12 +79,25 @@
             <!-- Header -->
             <div class="ts-grid is-bottom-aligned">
                 <div class="column is-fluid">
-                    <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">P-StreamRec - Videos</div>
+                    <div class="ts-header is-huge is-uppercased is-heavy has-leading-small">P-StreamRec - {{ if .ShowTS }}TS Files{{ else }}Videos{{ end }}</div>
                     <div class="ts-meta">
                         <div class="item">
                             <span class="ts-text is-description is-bold">{{ len .Videos }} video(s) found</span>
                         </div>
                     </div>
+                </div>
+                <div class="column">
+                    {{ if .ShowTS }}
+                    <a href="/videos" class="ts-button is-start-icon is-outlined">
+                        <span class="ts-icon is-film-icon"></span>
+                        View MP4 Files
+                    </a>
+                    {{ else }}
+                    <a href="/ts-files" class="ts-button is-start-icon is-outlined">
+                        <span class="ts-icon is-file-icon"></span>
+                        View TS Files
+                    </a>
+                    {{ end }}
                 </div>
                 <div class="column">
                     <a href="/" class="ts-button is-start-icon is-outlined">
@@ -201,10 +214,17 @@
                                         {{ end }}
                                     </td>
                                     <td>
+                                        {{ if $.ShowTS }}
+                                        <button class="ts-button is-small is-start-icon is-positive convert-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
+                                            <span class="ts-icon is-refresh-icon"></span>
+                                            Convert
+                                        </button>
+                                        {{ else }}
                                         <button class="ts-button is-small is-start-icon play-btn" data-video-path="{{ .Path }}" data-video-name="{{ .Name }}">
                                             <span class="ts-icon is-play-icon"></span>
                                             Play
                                         </button>
+                                        {{ end }}
                                         <a href="/videos/{{ .Path }}" class="ts-button is-small is-start-icon is-outlined" download>
                                             <span class="ts-icon is-download-icon"></span>
                                             Download
@@ -495,6 +515,71 @@
                 }
             }
 
+            // Function to convert video
+            function convertVideo(videoPath, videoName) {
+                // Ask for confirmation with delete option
+                const deleteConfirm = confirm('Convertir "' + videoName + '" en MP4?\\n\\nSupprimer le fichier .ts après conversion?\\n\\nOK = Oui, supprimer le .ts\\nAnnuler = Non, garder le .ts');
+                
+                if (deleteConfirm !== null) {
+                    // Update button state
+                    const button = document.querySelector(`button[data-video-path="${videoPath}"].convert-btn`);
+                    if (button) {
+                        button.disabled = true;
+                        button.innerHTML = '<span class="ts-icon is-spinner-icon"></span> Converting...';
+                    }
+                    
+                    // Prepare the URL with deleteTS parameter
+                    const deleteTS = deleteConfirm ? 'true' : 'false';
+                    const url = '/api/convert/' + videoPath + '?deleteTS=' + deleteTS;
+                    
+                    fetch(url, {
+                        method: 'POST'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('Conversion terminée avec succès!\\n\\nFichier MP4 créé: ' + data.mp4_file);
+                            
+                            // If TS was deleted, remove the row
+                            if (data.deleted_ts) {
+                                const videoRow = document.querySelector(`tr[data-video-path="${videoPath}"]`);
+                                if (videoRow) {
+                                    videoRow.remove();
+                                }
+                                
+                                // Update video count
+                                const videoCount = document.querySelectorAll('.video-item').length;
+                                document.querySelector('.ts-meta .item span').textContent = videoCount + ' video(s) found';
+                            } else {
+                                // Reset button state
+                                if (button) {
+                                    button.disabled = false;
+                                    button.innerHTML = '<span class="ts-icon is-check-icon"></span> Converted';
+                                    button.classList.remove('is-positive');
+                                    button.classList.add('is-success');
+                                }
+                            }
+                        } else {
+                            alert('Erreur de conversion: ' + (data.error || 'Erreur inconnue'));
+                            // Reset button state
+                            if (button) {
+                                button.disabled = false;
+                                button.innerHTML = '<span class="ts-icon is-refresh-icon"></span> Convert';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Erreur lors de la conversion');
+                        // Reset button state
+                        if (button) {
+                            button.disabled = false;
+                            button.innerHTML = '<span class="ts-icon is-refresh-icon"></span> Convert';
+                        }
+                    });
+                }
+            }
+
             // Function to delete video
             function deleteVideo(videoPath, videoName) {
                 if (confirm('Are you sure you want to delete "' + videoName + '"?')) {
@@ -556,6 +641,17 @@
                     });
                 });
 
+                // Add event listeners to convert buttons
+                document.querySelectorAll('.convert-btn').forEach(button => {
+                    button.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const videoPath = this.getAttribute('data-video-path');
+                        const videoName = this.getAttribute('data-video-name');
+                        convertVideo(videoPath, videoName);
+                    });
+                });
 
                 // Add event listeners to table rows
                 document.querySelectorAll('.video-item').forEach(row => {

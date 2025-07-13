@@ -59,11 +59,13 @@ func SetupViews(r *gin.Engine) {
 	r.POST("/pause_channel/:username", PauseChannel)
 	r.POST("/resume_channel/:username", ResumeChannel)
 	r.GET("/videos", VideoList)
+	r.GET("/ts-files", TSFileList)
 	r.GET("/videos/*filepath", ServeVideo)
 	r.GET("/videos-compat/*filepath", ServeVideoCompatible)
 	r.DELETE("/videos/delete/*filepath", DeleteVideo)
 	r.POST("/api/video_progress", UpdateVideoProgress)
 	r.GET("/api/video_progress/*filepath", GetVideoProgress)
+	r.POST("/api/convert/*filepath", ForceConvertVideo)
 
 }
 
