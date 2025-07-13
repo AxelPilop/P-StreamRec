@@ -33,7 +33,7 @@ type CreateChannelRequest struct {
 	Username    string `form:"username" binding:"required"`
 	Framerate   int    `form:"framerate" binding:"required"`
 	Resolution  int    `form:"resolution" binding:"required"`
-	Pattern     string `form:"pattern" binding:"required"`
+	Pattern     string `form:"pattern"`
 	MaxDuration int    `form:"max_duration"`
 	MaxFilesize int    `form:"max_filesize"`
 }
@@ -47,12 +47,18 @@ func CreateChannel(c *gin.Context) {
 	}
 
 	for _, username := range strings.Split(req.Username, ",") {
+		// Use default pattern if none provided
+		pattern := req.Pattern
+		if pattern == "" {
+			pattern = server.Config.Pattern
+		}
+		
 		server.Manager.CreateChannel(&entity.ChannelConfig{
 			IsPaused:    false,
-			Username:    username,
+			Username:    strings.TrimSpace(username),
 			Framerate:   req.Framerate,
 			Resolution:  req.Resolution,
-			Pattern:     req.Pattern,
+			Pattern:     pattern,
 			MaxDuration: req.MaxDuration,
 			MaxFilesize: req.MaxFilesize,
 			CreatedAt:   time.Now().Unix(),
