@@ -5,8 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.css" />
         <script src="https://cdnjs.cloudflare.com/ajax/libs/tocas/5.0.1/tocas.min.js"></script>
-        <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet" />
-        <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -61,32 +60,15 @@
                 margin-left: 0.5rem;
             }
             
-            /* Video.js custom styling */
-            .video-js {
-                font-family: 'Noto Sans TC', Arial, sans-serif;
+            /* Video player styling */
+            #video-player {
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
             }
             
-            .video-js .vjs-big-play-button {
-                border-radius: 50%;
-                background-color: rgba(0, 0, 0, 0.8);
-                border: none;
-                width: 80px;
-                height: 80px;
-                line-height: 80px;
-                font-size: 40px;
-            }
-            
-            .video-js .vjs-control-bar {
-                background-color: rgba(0, 0, 0, 0.8);
-                height: 40px;
-            }
-            
-            .video-js .vjs-progress-control {
-                height: 6px;
-            }
-            
-            .video-js .vjs-play-progress {
-                background-color: #007bff;
+            #video-player:focus {
+                outline: 2px solid #007bff;
+                outline-offset: 2px;
             }
         </style>
     </head>
@@ -152,18 +134,12 @@
                     </div>
                     <div class="video-player">
                         <video id="video-player" 
-                               class="video-js vjs-default-skin" 
                                controls 
                                preload="auto" 
                                width="100%" 
                                height="400"
-                               style="margin-top: 1rem;"
-                               data-setup="{}">
-                            <source id="video-source" src="" type="video/mp2t">
-                            <p class="vjs-no-js">
-                                To view this video please enable JavaScript, and consider upgrading to a web browser that
-                                <a href="https://videojs.com/html5-video-support/" target="_blank">supports HTML5 video</a>.
-                            </p>
+                               style="margin-top: 1rem; background-color: #000; border-radius: 8px;">
+                            Your browser does not support the video tag or HLS.js.
                         </video>
                     </div>
                     <div class="progress-bar" style="margin-top: 1rem;">
@@ -253,65 +229,29 @@
         <script>
             let currentVideoPath = null;
             let progressInterval = null;
-            let player = null;
+            let hls = null;
+            let videoPlayer = null;
 
-            // Check if browser supports .ts files
-            function canPlayTS() {
-                const video = document.createElement('video');
-                return video.canPlayType('video/mp2t') !== '';
-            }
-
-            // Initialize Video.js when DOM is ready
+            // Initialize when DOM is ready
             document.addEventListener('DOMContentLoaded', function() {
-                // Initialize Video.js player
-                player = videojs('video-player', {
-                    fluid: true,
-                    responsive: true,
-                    playbackRates: [0.5, 1, 1.5, 2],
-                    controls: true,
-                    preload: 'auto',
-                    html5: {
-                        nativeAudioTracks: false,
-                        nativeVideoTracks: false
-                    }
-                });
+                videoPlayer = document.getElementById('video-player');
                 
-                // Log browser support for debugging
-                console.log('Browser .ts support:', canPlayTS());
+                // Check if HLS.js is supported
+                if (Hls.isSupported()) {
+                    console.log('HLS.js is supported - will use for .ts files');
+                } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    console.log('Native HLS support detected');
+                } else {
+                    console.log('HLS not supported - fallback to direct video serving');
+                }
             });
 
-            // Function to play video
+            // Function to play video using HLS.js
             function playVideo(videoPath, videoName) {
                 currentVideoPath = videoPath;
                 const playerContainer = document.getElementById('video-player-container');
                 const videoTitle = document.getElementById('video-title');
                 const videoInfo = document.getElementById('video-info');
-                
-                // Set video source using Video.js
-                if (player) {
-                    // Try multiple formats for better compatibility
-                    player.src([
-                        {
-                            type: 'video/mp2t',
-                            src: '/videos/' + videoPath
-                        },
-                        {
-                            type: 'video/mp4',
-                            src: '/videos-compat/' + videoPath
-                        },
-                        {
-                            type: 'application/octet-stream',
-                            src: '/videos/' + videoPath
-                        }
-                    ]);
-                    
-                    // Handle errors gracefully
-                    player.on('error', function() {
-                        const videoInfo = document.getElementById('video-info');
-                        videoInfo.textContent = 'Error loading video. This may be due to browser compatibility with .ts files.';
-                        console.error('Video playback error:', player.error());
-                    });
-                }
                 
                 videoTitle.textContent = videoName;
                 videoInfo.textContent = 'Loading...';
@@ -319,23 +259,129 @@
                 // Show player container
                 playerContainer.style.display = 'block';
                 
-                // Load existing progress
-                loadVideoProgress(videoPath);
+                // Clean up previous HLS instance
+                if (hls) {
+                    hls.destroy();
+                }
                 
-                // Set up progress tracking
-                setupProgressTracking(player, videoPath);
+                const videoUrl = '/videos/' + videoPath;
+                const hlsUrl = '/hls/' + videoPath;
+                
+                // Try HLS.js first for .ts files
+                if (Hls.isSupported()) {
+                    hls = new Hls({
+                        debug: false,
+                        enableWorker: true,
+                        lowLatencyMode: false,
+                        backBufferLength: 90
+                    });
+                    
+                    // Load the HLS manifest first
+                    hls.loadSource(hlsUrl);
+                    hls.attachMedia(videoPlayer);
+                    
+                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                        console.log('HLS manifest parsed, ready to play');
+                        videoInfo.textContent = 'Ready to play';
+                        
+                        // Load existing progress
+                        loadVideoProgress(videoPath);
+                        
+                        // Set up progress tracking
+                        setupProgressTracking(videoPlayer, videoPath);
+                    });
+                    
+                    hls.on(Hls.Events.ERROR, function(event, data) {
+                        console.error('HLS error:', data);
+                        
+                        if (data.fatal) {
+                            switch (data.type) {
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    console.log('Network error - trying fallback');
+                                    tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                                    break;
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    console.log('Media error - trying to recover');
+                                    hls.recoverMediaError();
+                                    break;
+                                default:
+                                    console.log('Fatal error - trying fallback');
+                                    tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                                    break;
+                            }
+                        }
+                    });
+                    
+                } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Native HLS support (Safari)
+                    videoPlayer.src = hlsUrl;
+                    loadVideoProgress(videoPath);
+                    setupProgressTracking(videoPlayer, videoPath);
+                    
+                } else {
+                    // Fallback to direct video serving
+                    tryFallbackPlayback(videoUrl, videoPath, videoInfo);
+                }
                 
                 // Scroll to player
                 playerContainer.scrollIntoView({ behavior: 'smooth' });
+            }
+            
+            // Fallback function for browsers without HLS support
+            function tryFallbackPlayback(videoUrl, videoPath, videoInfo) {
+                console.log('Trying fallback playback methods');
+                
+                // Try different content types
+                const fallbackUrls = [
+                    { url: '/videos-compat/' + videoPath, type: 'video/mp4' },
+                    { url: videoUrl, type: 'video/mp2t' },
+                    { url: videoUrl, type: 'application/octet-stream' }
+                ];
+                
+                let currentFallback = 0;
+                
+                function tryNext() {
+                    if (currentFallback >= fallbackUrls.length) {
+                        videoInfo.textContent = 'Unable to play this video format in your browser';
+                        return;
+                    }
+                    
+                    const fallback = fallbackUrls[currentFallback];
+                    console.log('Trying fallback:', fallback.url, fallback.type);
+                    
+                    videoPlayer.src = fallback.url;
+                    
+                    videoPlayer.addEventListener('loadedmetadata', function onLoaded() {
+                        console.log('Fallback successful');
+                        videoInfo.textContent = 'Playing with fallback method';
+                        loadVideoProgress(videoPath);
+                        setupProgressTracking(videoPlayer, videoPath);
+                        videoPlayer.removeEventListener('loadedmetadata', onLoaded);
+                    }, { once: true });
+                    
+                    videoPlayer.addEventListener('error', function onError() {
+                        console.log('Fallback failed, trying next');
+                        currentFallback++;
+                        videoPlayer.removeEventListener('error', onError);
+                        tryNext();
+                    }, { once: true });
+                }
+                
+                tryNext();
             }
 
             // Function to close video player
             function closeVideoPlayer() {
                 const playerContainer = document.getElementById('video-player-container');
                 
-                if (player) {
-                    player.pause();
-                    player.currentTime(0);
+                if (videoPlayer) {
+                    videoPlayer.pause();
+                    videoPlayer.currentTime = 0;
+                }
+                
+                if (hls) {
+                    hls.destroy();
+                    hls = null;
                 }
                 
                 playerContainer.style.display = 'none';
@@ -353,15 +399,20 @@
                 fetch('/api/video_progress/' + videoPath)
                     .then(response => response.json())
                     .then(data => {
-                        if (data.progress && player) {
+                        if (data.progress && videoPlayer) {
                             const progress = data.progress;
                             const videoInfo = document.getElementById('video-info');
                             
                             // Wait for video to be ready before setting time
-                            player.ready(function() {
-                                player.currentTime(progress.current_time);
-                            });
+                            function setProgress() {
+                                if (videoPlayer.readyState >= 2) {
+                                    videoPlayer.currentTime = progress.current_time;
+                                } else {
+                                    setTimeout(setProgress, 100);
+                                }
+                            }
                             
+                            setProgress();
                             updateProgressDisplay(progress.percent_watched);
                             
                             if (progress.is_completed) {
@@ -382,16 +433,16 @@
             function setupProgressTracking(videoPlayer, videoPath) {
                 if (!videoPlayer) return;
                 
-                videoPlayer.on('loadedmetadata', function() {
+                videoPlayer.addEventListener('loadedmetadata', function() {
                     const videoInfo = document.getElementById('video-info');
-                    const duration = formatDuration(videoPlayer.duration());
+                    const duration = formatDuration(videoPlayer.duration);
                     videoInfo.textContent = 'Duration: ' + duration;
                 });
 
-                videoPlayer.on('timeupdate', function() {
-                    if (videoPlayer.duration() > 0) {
-                        const currentTime = videoPlayer.currentTime();
-                        const duration = videoPlayer.duration();
+                videoPlayer.addEventListener('timeupdate', function() {
+                    if (videoPlayer.duration > 0) {
+                        const currentTime = videoPlayer.currentTime;
+                        const duration = videoPlayer.duration;
                         const percentWatched = (currentTime / duration) * 100;
                         
                         updateProgressDisplay(percentWatched);
@@ -404,12 +455,12 @@
                 }
                 
                 progressInterval = setInterval(() => {
-                    if (videoPlayer && videoPlayer.duration() > 0 && currentVideoPath) {
+                    if (videoPlayer && videoPlayer.duration > 0 && currentVideoPath) {
                         const progress = {
                             video_path: currentVideoPath,
-                            current_time: videoPlayer.currentTime(),
-                            duration: videoPlayer.duration(),
-                            percent_watched: (videoPlayer.currentTime() / videoPlayer.duration()) * 100
+                            current_time: videoPlayer.currentTime,
+                            duration: videoPlayer.duration,
+                            percent_watched: (videoPlayer.currentTime / videoPlayer.duration) * 100
                         };
                         
                         fetch('/api/video_progress', {
