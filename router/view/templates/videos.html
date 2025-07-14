@@ -566,6 +566,11 @@
 
             // Add event listeners when DOM is loaded
             document.addEventListener('DOMContentLoaded', function() {
+                // Ensure video list is visible on page load (fix display bug)
+                document.getElementById('video-list-container').style.display = 'block';
+                document.getElementById('video-list-divider').style.display = 'block';
+                document.getElementById('video-player-container').style.display = 'none';
+                
                 // Add event listeners to play buttons
                 document.querySelectorAll('.play-btn').forEach(button => {
                     button.addEventListener('click', function(e) {

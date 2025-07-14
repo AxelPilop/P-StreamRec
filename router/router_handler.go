@@ -105,11 +105,16 @@ type UpdateConfigRequest struct {
 
 // UpdateConfig updates the server configuration.
 func UpdateConfig(c *gin.Context) {
-	var req *UpdateConfigRequest
-	if err := c.Bind(&req); err != nil {
-		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("bind: %w", err))
+	var req UpdateConfigRequest
+	if err := c.ShouldBind(&req); err != nil {
+		fmt.Printf("Error binding config request: %v\n", err)
+		c.Redirect(http.StatusFound, "/?error=invalid_form")
 		return
 	}
+
+	// Debug logging
+	fmt.Printf("Config update request: cookies=%s, user_agent=%s, pattern=%s, auto_delete=%v\n", 
+		req.Cookies, req.UserAgent, req.Pattern, req.AutoDeleteWatched)
 
 	server.Config.Cookies = req.Cookies
 	server.Config.UserAgent = req.UserAgent
@@ -118,10 +123,12 @@ func UpdateConfig(c *gin.Context) {
 
 	// Save settings persistently
 	if err := config.SavePersistentSettings(server.Config); err != nil {
-		// Log error but don't fail the request
-		fmt.Printf("Warning: Failed to save settings: %v\n", err)
+		fmt.Printf("Error saving settings: %v\n", err)
+		c.Redirect(http.StatusFound, "/?error=save_failed")
+		return
 	}
 
+	fmt.Println("Config updated successfully, redirecting to /")
 	c.Redirect(http.StatusFound, "/")
 }
 
@@ -231,6 +238,7 @@ func ServeVideoCompatible(c *gin.Context) {
 // Returns .ts files for playback with HLS.js
 func getVideoFiles() ([]VideoInfo, error) {
 	var videos []VideoInfo
+	fmt.Println("DEBUG: Starting getVideoFiles scan")
 	
 	err := filepath.Walk("videos", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -238,8 +246,10 @@ func getVideoFiles() ([]VideoInfo, error) {
 		}
 
 		if !info.IsDir() && strings.HasSuffix(strings.ToLower(path), ".ts") {
+			fmt.Printf("DEBUG: Found .ts file: %s\n", path)
 			// Skip files that are currently being recorded
 			if isFileCurrentlyRecording(path) {
+				fmt.Printf("DEBUG: Skipping file %s (currently recording)\n", path)
 				return nil
 			}
 			
@@ -265,6 +275,7 @@ func getVideoFiles() ([]VideoInfo, error) {
 		return nil
 	})
 
+	fmt.Printf("DEBUG: getVideoFiles completed, found %d videos\n", len(videos))
 	return videos, err
 }
 
@@ -277,11 +288,14 @@ func isFileCurrentlyRecording(filePath string) bool {
 	// Get absolute path of the file
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
+		fmt.Printf("DEBUG: Error getting absolute path for %s: %v\n", filePath, err)
 		return false
 	}
 	
 	// Check all active channels by using their exported channel info
 	channels := server.Manager.ChannelInfo()
+	fmt.Printf("DEBUG: Checking file %s against %d channels\n", absPath, len(channels))
+	
 	for _, channelInfo := range channels {
 		// Skip paused channels
 		if channelInfo.IsPaused {
@@ -291,12 +305,17 @@ func isFileCurrentlyRecording(filePath string) bool {
 		// Check if channel has an active file and it matches our file
 		if channelInfo.Filename != "" {
 			channelFilePath, err := filepath.Abs(channelInfo.Filename)
-			if err == nil && channelFilePath == absPath {
-				return true
+			if err == nil {
+				fmt.Printf("DEBUG: Comparing %s with %s\n", absPath, channelFilePath)
+				if channelFilePath == absPath {
+					fmt.Printf("DEBUG: File %s is currently being recorded by %s\n", filePath, channelInfo.Username)
+					return true
+				}
 			}
 		}
 	}
 	
+	fmt.Printf("DEBUG: File %s is NOT currently being recorded\n", filePath)
 	return false
 }
 
