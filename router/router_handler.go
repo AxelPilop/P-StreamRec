@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/teacat/chaturbate-dvr/channel"
 	"github.com/teacat/chaturbate-dvr/config"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/server"
@@ -281,29 +280,24 @@ func isFileCurrentlyRecording(filePath string) bool {
 		return false
 	}
 	
-	// Check all active channels
-	var isRecording bool
-	server.Manager.Channels.Range(func(key, value any) bool {
-		ch := value.(*channel.Channel)
-		
+	// Check all active channels by using their exported channel info
+	channels := server.Manager.ChannelInfo()
+	for _, channelInfo := range channels {
 		// Skip paused channels
-		if ch.Config.IsPaused {
-			return true // continue iteration
+		if channelInfo.IsPaused {
+			continue
 		}
 		
 		// Check if channel has an active file and it matches our file
-		if ch.File != nil {
-			channelFilePath, err := filepath.Abs(ch.File.Name())
+		if channelInfo.Filename != "" {
+			channelFilePath, err := filepath.Abs(channelInfo.Filename)
 			if err == nil && channelFilePath == absPath {
-				isRecording = true
-				return false // stop iteration
+				return true
 			}
 		}
-		
-		return true // continue iteration
-	})
+	}
 	
-	return isRecording
+	return false
 }
 
 // extractUsernameFromPath extracts the username from the video file path.
